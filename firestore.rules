@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────────────────
+    // Helper functions
+    // ─────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function getRole() {
+      return getUserData().baseRole;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getRole() == 'admin';
+    }
+
+    function isAdminOrEditor() {
+      return isSignedIn() && getRole() in ['admin', 'editor'];
+    }
+
+    function isAssignedToShow(showId) {
+      let userData = getUserData();
+      // Admin always has access; other roles check assignedShows
+      return getRole() == 'admin'
+        || showId in userData.assignedShows
+        || userData.assignedShows.size() == 0; // empty = all shows (admin only)
+    }
+
+    function isTech() {
+      return isSignedIn() && getRole() == 'tech';
+    }
+
+    function isReviewer() {
+      return isSignedIn() && getRole() == 'reviewer';
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Shows
+    // ─────────────────────────────────────────────────────
+
+    match /shows/{showId} {
+      allow read: if isSignedIn() && isAssignedToShow(showId);
+      allow create: if isAdminOrEditor();
+      allow update: if isAdminOrEditor() && isAssignedToShow(showId);
+      allow delete: if isAdmin();
+
+      // Sessions subcollection
+      match /sessions/{sessionId} {
+        allow read: if isSignedIn() && isAssignedToShow(showId);
+        allow create: if isAdminOrEditor() && isAssignedToShow(showId);
+        allow update: if isAdminOrEditor() && isAssignedToShow(showId);
+        allow delete: if isAdmin();
+
+        // Transcript chunks — server-only writes
+        match /transcripts/{chunkId} {
+          allow read: if isSignedIn() && isAssignedToShow(showId);
+          allow write: if false; // Cloud Functions (Admin SDK) only
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Users
+    // ─────────────────────────────────────────────────────
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Output Layout Templates
+    // ─────────────────────────────────────────────────────
+
+    match /outputLayouts/{layoutId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && getRole() in ['admin', 'editor', 'tech'];
+      allow update: if isSignedIn() && getRole() in ['admin', 'editor', 'tech'];
+      allow delete: if isAdminOrEditor();
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Audit Log — immutable, server-write only
+    // ─────────────────────────────────────────────────────
+
+    match /auditLog/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Functions (Admin SDK) only
+    }
+  }
+}

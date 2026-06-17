@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Onda — Offline</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0f;
+      color: #e8e8f0;
+      font-family: 'Inter', -apple-system, sans-serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      text-align: center;
+      padding: 2rem;
+    }
+    .logo {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, #5b3aee, #00d4aa);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    p  { font-size: 1rem; color: #8888aa; max-width: 320px; line-height: 1.6; }
+    .pulse {
+      width: 8px; height: 8px;
+      background: #f5a623;
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+      display: inline-block;
+      margin-right: 0.5rem;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.8); }
+    }
+  </style>
+</head>
+<body>
+  <div class="logo">〜</div>
+  <h1>You're offline</h1>
+  <p>
+    <span class="pulse"></span>
+    Reconnecting to the live session. Check your connection and this page will reload automatically.
+  </p>
+  <script>
+    // Auto-reload when connection is restored
+    window.addEventListener('online', () => window.location.reload())
+  </script>
+</body>
+</html>

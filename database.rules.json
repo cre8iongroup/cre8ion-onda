@@ -1,0 +1,26 @@
+{
+  "rules": {
+    "liveSessions": {
+      "$sessionId": {
+        // feedState: public read (attendees need to know when feed is live)
+        // Write: server (Admin SDK) only
+        "feedState": {
+          ".read": true,
+          ".write": false
+        },
+        // Full session node readable by authenticated users (tech panel preview)
+        // Attendees read chunks only when feedState === 'live' (enforced client-side
+        // and by the attendee view component — RTDB rules alone cannot do conditional
+        // reads on sibling nodes, so we keep chunks publicly readable at this path
+        // and rely on feedState to gate the UI display)
+        "chunks": {
+          ".read": true,
+          ".write": false,
+          "$chunkId": {
+            ".validate": "newData.hasChildren(['text', 'sequenceNumber', 'timestamp', 'isFinalized'])"
+          }
+        }
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { addDoc, collection, Timestamp } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
+import { provisionTechAuthUser } from '@/lib/tech/provisionTechUser'
 import type { ShowDoc } from '@/types'
 
 const createShowSchema = z.object({
@@ -18,6 +19,7 @@ const createShowSchema = z.object({
     .trim()
     .min(2, 'Portal slug is required')
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase letters, numbers, and hyphens'),
+  techCredential: z.string().trim().min(8, 'Tech credential must be at least 8 characters'),
 }).refine(
   (data) => new Date(data.endDate) >= new Date(data.startDate),
   { message: 'End date must be on or after start date', path: ['endDate'] }
@@ -69,6 +71,7 @@ export default function CreateShowModal({
       startDate: '',
       endDate: '',
       portalSlug: '',
+      techCredential: '',
     },
   })
 
@@ -84,6 +87,7 @@ export default function CreateShowModal({
       startDate: '',
       endDate: '',
       portalSlug: '',
+      techCredential: '',
     })
     const t = window.setTimeout(() => nameInputRef.current?.focus(), 50)
     return () => window.clearTimeout(t)
@@ -132,12 +136,34 @@ export default function CreateShowModal({
         },
         defaultLanguages: ['en', 'es'],
         portalPublished: false,
+        techCredential: values.techCredential.trim(),
         createdAt: Timestamp.now(),
         createdBy,
       }
 
       const fs = getClientFirestore()
       const ref = await addDoc(collection(fs, 'shows'), payload)
+
+      try {
+        const provisioned = await provisionTechAuthUser({
+          showId: ref.id,
+          portalSlug: values.portalSlug.trim(),
+          techCredential: values.techCredential.trim(),
+          createdBy,
+        })
+        if (provisioned.existed) {
+          console.warn('CreateShowModal: tech Auth user already existed for slug; password not rotated')
+        }
+      } catch (provisionErr) {
+        console.error('CreateShowModal: tech user provision failed', provisionErr)
+        setError('root', {
+          message:
+            'Show created, but tech login could not be provisioned. Set the tech credential again from show settings.',
+        })
+        onCreated(ref.id)
+        return
+      }
+
       onCreated(ref.id)
       onClose()
     } catch (err: any) {
@@ -254,6 +280,23 @@ export default function CreateShowModal({
               Used for <code>/portal/[slug]</code>
             </p>
             {errors.portalSlug && <p className="field-error">{errors.portalSlug.message}</p>}
+          </div>
+
+          <div className="field">
+            <label htmlFor="show-tech-credential" className="label">Tech panel credential</label>
+            <input
+              id="show-tech-credential"
+              type="password"
+              className={`input ${errors.techCredential ? 'error' : ''}`}
+              placeholder="Shared password for tech operators"
+              autoComplete="new-password"
+              disabled={isSubmitting}
+              {...register('techCredential')}
+            />
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              Operators sign in at <code>/tech/login</code> with this show&apos;s portal slug + credential.
+            </p>
+            {errors.techCredential && <p className="field-error">{errors.techCredential.message}</p>}
           </div>
 
           {errors.root && (

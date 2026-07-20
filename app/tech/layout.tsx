@@ -1,37 +1,52 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuthContext } from '@/context/AuthContext'
+import { portalSlugFromTechEmail } from '@/lib/tech/credentials'
 
 const TECH_NAV = [
-  { href: '/tech',              label: 'Sessions',    icon: '📡' },
-  { href: '/tech/network',      label: 'Network',     icon: '🌐' },
+  { href: '/tech', label: 'Sessions', icon: '📡' },
+  { href: '/tech/network', label: 'Network', icon: '🌐' },
 ]
 
 export default function TechLayout({ children }: { children: React.ReactNode }) {
   const { user, userDoc, capabilities, loading, signOut } = useAuthContext()
   const router = useRouter()
+  const pathname = usePathname()
+  const isLogin = pathname === '/tech/login' || pathname?.startsWith('/tech/login/')
 
   useEffect(() => {
+    if (isLogin) return
     if (loading) return
     if (!user) {
-      router.replace('/login?from=/tech')
+      router.replace(`/tech/login?from=${encodeURIComponent(pathname || '/tech')}`)
       return
     }
     if (!capabilities?.canAccessTechPanel) {
-      router.replace('/login?error=unauthorized')
+      router.replace('/tech/login?error=unauthorized')
     }
-  }, [user, capabilities, loading, router])
+  }, [user, capabilities, loading, router, isLogin, pathname])
 
-  if (loading || !user || !capabilities) {
+  if (isLogin) {
+    return <>{children}</>
+  }
+
+  if (loading || !user || !capabilities?.canAccessTechPanel) {
     return (
       <div className="auth-shell">
         <span className="spinner" aria-label="Loading" />
       </div>
     )
   }
+
+  const showLabel =
+    portalSlugFromTechEmail(userDoc?.email || user.email || '') ||
+    userDoc?.displayName ||
+    'Tech'
+
+  const assigned = userDoc?.assignedShows || []
 
   return (
     <div className="panel-shell">
@@ -43,7 +58,11 @@ export default function TechLayout({ children }: { children: React.ReactNode }) 
 
         <nav>
           {TECH_NAV.map(({ href, label, icon }) => (
-            <Link key={href} href={href} className="nav-item">
+            <Link
+              key={href}
+              href={href}
+              className={`nav-item${pathname === href || (href !== '/tech' && pathname?.startsWith(href)) ? ' active' : ''}`}
+            >
               <span>{icon}</span>
               <span>{label}</span>
             </Link>
@@ -54,7 +73,10 @@ export default function TechLayout({ children }: { children: React.ReactNode }) 
 
         <div style={{ padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--color-border)' }}>
           <p className="text-sm truncate" style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>
-            {userDoc?.displayName || userDoc?.email}
+            {showLabel}
+          </p>
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
+            {assigned.length === 1 ? '1 show scoped' : `${assigned.length || 0} shows scoped`}
           </p>
           <span className="badge badge-standby" style={{ marginBottom: 'var(--space-3)' }}>Tech</span>
           <button
@@ -63,7 +85,7 @@ export default function TechLayout({ children }: { children: React.ReactNode }) 
             onClick={async () => {
               await signOut()
               document.cookie = 'onda-session=; Max-Age=0; path=/'
-              router.replace('/login')
+              router.replace('/tech/login')
             }}
           >
             Sign out
@@ -71,9 +93,7 @@ export default function TechLayout({ children }: { children: React.ReactNode }) 
         </div>
       </aside>
 
-      <main className="panel-main">
-        {children}
-      </main>
+      <main className="panel-main">{children}</main>
     </div>
   )
 }

@@ -56,7 +56,14 @@ service cloud.firestore {
       match /sessions/{sessionId} {
         allow read: if isSignedIn() && isAssignedToShow(showId);
         allow create: if isAdminOrEditor() && isAssignedToShow(showId);
-        allow update: if isAdminOrEditor() && isAssignedToShow(showId);
+        // Admins/editors: full update. Tech: feedState only (Go Live control).
+        allow update: if isSignedIn() && isAssignedToShow(showId) && (
+          isAdminOrEditor()
+          || (
+            isTech()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feedState'])
+          )
+        );
         allow delete: if isAdmin();
 
         // Transcript chunks — server-only writes

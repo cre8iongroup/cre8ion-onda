@@ -2,17 +2,14 @@
   "rules": {
     "liveSessions": {
       "$sessionId": {
-        // feedState: public read (attendees need to know when feed is live)
-        // Write: server (Admin SDK) only
+        // feedState: public read (attendees need to know when feed is live).
+        // Authenticated tech/admin may flip feedState for Go Live / standby / end.
         "feedState": {
           ".read": true,
-          ".write": false
+          ".write": "auth != null"
         },
-        // Full session node readable by authenticated users (tech panel preview)
-        // Attendees read chunks only when feedState === 'live' (enforced client-side
-        // and by the attendee view component — RTDB rules alone cannot do conditional
-        // reads on sibling nodes, so we keep chunks publicly readable at this path
-        // and rely on feedState to gate the UI display)
+        // Chunks: public read (attendee UI gates on feedState client-side).
+        // Writes remain server-only (webhook / Cloud Functions via Admin SDK).
         "chunks": {
           ".read": true,
           ".write": false,

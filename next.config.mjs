@@ -45,6 +45,9 @@ const nextConfig = {
   // Next.js 16+: moved from experimental.serverComponentsExternalPackages
   serverExternalPackages: ['firebase-admin'],
 
+  // Allow both localhost and 127.0.0.1 in dev (HMR / _next assets)
+  allowedDevOrigins: ['127.0.0.1', 'localhost'],
+
   // Next.js 16 uses Turbopack by default — declare empty config to silence
   // the webpack-vs-turbopack warning surfaced by next-pwa's webpack plugin.
   turbopack: {},

@@ -16,9 +16,26 @@ const firebaseConfig = {
   databaseURL:       process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ?? '',
 }
 
+export class FirebaseConfigError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'FirebaseConfigError'
+  }
+}
+
+function assertClientConfig() {
+  if (!firebaseConfig.apiKey || !firebaseConfig.projectId || !firebaseConfig.appId) {
+    throw new FirebaseConfigError(
+      'Firebase is not configured. Copy .env.example to .env.local and set the NEXT_PUBLIC_FIREBASE_* values from the Firebase console (Project settings → Your apps).'
+    )
+  }
+}
+
 // Singleton — Next.js hot-reload safe
 function getFirebaseApp(): FirebaseApp {
-  return getApps().length ? getApp() : initializeApp(firebaseConfig)
+  if (getApps().length) return getApp()
+  assertClientConfig()
+  return initializeApp(firebaseConfig)
 }
 
 // Lazy getters — evaluated on first call, safe for 'use client' components
@@ -41,6 +58,3 @@ export function getClientStorage() {
   const { getStorage } = require('firebase/storage')
   return getStorage(getFirebaseApp())
 }
-
-// Named exports for convenience — only call these in 'use client' context
-export const app       = typeof window !== 'undefined' ? getFirebaseApp() : null

@@ -49,41 +49,57 @@ export function useAuth(): AuthState & AuthActions {
   const [error, setError]       = useState<string | null>(null)
 
   useEffect(() => {
-    const auth = getClientAuth()
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setError(null)
-      if (!firebaseUser) {
-        setUser(null)
-        setUserDoc(null)
-        setCaps(null)
-        setLoading(false)
-        return
-      }
+    let unsubscribe = () => {}
 
-      setUser(firebaseUser)
-
-      try {
-        const fs = getClientFirestore()
-        const docRef = doc(fs, 'users', firebaseUser.uid)
-        const docSnap = await getDoc(docRef)
-
-        if (docSnap.exists()) {
-          const data = docSnap.data() as UserDoc
-          setUserDoc(data)
-          setCaps(resolveCapabilities(data))
-        } else {
+    try {
+      const auth = getClientAuth()
+      unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        setError(null)
+        if (!firebaseUser) {
+          setUser(null)
           setUserDoc(null)
-          setCaps(DEFAULT_CAPABILITIES)
-          console.warn('useAuth: no user doc found for uid', firebaseUser.uid)
+          setCaps(null)
+          setLoading(false)
+          return
         }
-      } catch (err) {
-        console.error('useAuth: failed to load user doc', err)
-        setError('Failed to load user profile. Please refresh.')
-        setCaps(DEFAULT_CAPABILITIES)
-      } finally {
-        setLoading(false)
-      }
-    })
+
+        setUser(firebaseUser)
+
+        try {
+          const fs = getClientFirestore()
+          const docRef = doc(fs, 'users', firebaseUser.uid)
+          const docSnap = await getDoc(docRef)
+
+          if (docSnap.exists()) {
+            const data = docSnap.data() as UserDoc
+            setUserDoc(data)
+            setCaps(resolveCapabilities(data))
+          } else {
+            setUserDoc(null)
+            setCaps(DEFAULT_CAPABILITIES)
+            console.warn('useAuth: no user doc found for uid', firebaseUser.uid)
+          }
+        } catch (err) {
+          console.error('useAuth: failed to load user doc', err)
+          setError('Failed to load user profile. Please refresh.')
+          setCaps(DEFAULT_CAPABILITIES)
+        } finally {
+          setLoading(false)
+        }
+      })
+    } catch (err: any) {
+      // Missing/invalid Firebase config must not leave the UI stuck on a spinner.
+      console.error('useAuth: Firebase auth failed to initialize', err)
+      setUser(null)
+      setUserDoc(null)
+      setCaps(null)
+      setError(
+        err?.message?.includes('Firebase is not configured')
+          ? err.message
+          : 'Firebase Auth failed to initialize. Check NEXT_PUBLIC_FIREBASE_* in .env.local.'
+      )
+      setLoading(false)
+    }
 
     return () => unsubscribe()
   }, [])

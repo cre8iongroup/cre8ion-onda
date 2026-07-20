@@ -1,0 +1,21 @@
+{
+  "name": "onda-electron-recall-spike",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PoC: Electron + Recall Desktop SDK adhoc/in-person audio capture for Onda",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "verify-normalize": "node scripts/verify-normalize.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@recallai/desktop-sdk": "^2.0.26",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "electron": "^34.2.0"
+  }
+}

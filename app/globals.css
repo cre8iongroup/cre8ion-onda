@@ -562,6 +562,11 @@ tbody tr:hover td {
   animation: modal-rise-in var(--transition-slow) ease;
 }
 
+.modal-panel-lg {
+  width: min(640px, 100%);
+  max-height: min(92dvh, 860px);
+}
+
 .modal-header {
   display: flex;
   align-items: flex-start;
@@ -601,6 +606,71 @@ a.show-list-item:focus-visible {
   outline-offset: 2px;
 }
 
+.checkbox-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 180px;
+  overflow: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-input);
+}
+
+.override-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  margin-top: 0.2rem;
+}
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-card);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.data-table th,
+.data-table td {
+  padding: var(--space-4) var(--space-5);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.data-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--color-bg-elevated);
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
 @keyframes modal-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -613,6 +683,7 @@ a.show-list-item:focus-visible {
 
 @media (max-width: 640px) {
   .field-row { grid-template-columns: 1fr; }
+  .override-grid { grid-template-columns: 1fr; }
 }
 
 /* ─────────────────────────────────────────────────

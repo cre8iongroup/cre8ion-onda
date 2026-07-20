@@ -590,7 +590,15 @@ tbody tr:hover td {
 }
 
 .show-list-item {
+  display: block;
   padding: var(--space-5) var(--space-6);
+  text-decoration: none;
+  color: inherit;
+}
+
+a.show-list-item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 @keyframes modal-fade-in {

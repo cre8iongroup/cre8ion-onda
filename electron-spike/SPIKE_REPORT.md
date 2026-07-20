@@ -50,7 +50,8 @@ Also: Recall’s `type: "webhook"` realtime endpoint does **not** send `x-recall
 Documented expectation from Recall:
 
 - Meeting mode guidance: `microphone`, `accessibility`, `screen-capture`
-- Adhoc: mic is essential; this spike still requests all three and logs results
+- Adhoc: also request `system-audio` (SDK permission enum) for speaker mix
+- Mic is essential; this spike requests mic + system-audio + accessibility + screen-capture and logs results
 
 **Not observed on this agent** (no macOS UI). On first Mac run, note:
 

@@ -82,6 +82,12 @@ export interface ShowDoc {
   branding: ShowBranding
   defaultLanguages: string[]  // e.g. ['en', 'es', 'pt', 'fr']
   portalPublished: boolean
+  /**
+   * Shared Tech Operator Panel password for this show (v1).
+   * Auth email is derived as tech+{portalSlug}@onda.tech — see lib/tech/credentials.ts.
+   * Prefer setting via Admin UI so the matching Auth user is provisioned.
+   */
+  techCredential?: string
   archivedAt?: Timestamp
   createdAt: Timestamp
   createdBy: string
@@ -157,6 +163,7 @@ export interface RTDBChunk {
   text: string
   sequenceNumber: number
   timestamp: number           // Unix ms
+  speakerLabel?: string | null
   translations: {
     es?: string
     pt?: string

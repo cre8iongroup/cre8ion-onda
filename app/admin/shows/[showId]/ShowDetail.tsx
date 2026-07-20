@@ -14,6 +14,7 @@ import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
 import type { SessionDoc, ShowDoc, WithId } from '@/types'
 import CreateSessionModal from './CreateSessionModal'
+import TechCredentialPanel from './TechCredentialPanel'
 
 function formatDateRange(start?: Timestamp, end?: Timestamp): string {
   if (!start || !end) return 'Dates TBD'
@@ -194,6 +195,17 @@ export default function ShowDetail({ showId }: { showId: string }) {
           {error}
         </div>
       )}
+
+      <section style={{ marginBottom: 'var(--space-10)' }}>
+        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Tech access</h2>
+        <TechCredentialPanel
+          showId={show.id}
+          portalSlug={show.branding?.portalURL || ''}
+          hasCredential={Boolean(show.techCredential)}
+          createdBy={user?.uid || ''}
+          canEdit={Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)}
+        />
+      </section>
 
       <section>
         <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Sessions</h2>

@@ -687,6 +687,83 @@ a.show-list-item:focus-visible {
 }
 
 /* ─────────────────────────────────────────────────
+   Tech Operator Panel
+   ───────────────────────────────────────────────── */
+.tech-operator-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.tech-operator-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.network-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.net-pill {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  font-size: var(--text-sm);
+}
+
+.net-pill strong {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.transcript-preview .transcript-scroll {
+  max-height: 520px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-2);
+}
+
+.transcript-line {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  line-height: 1.45;
+}
+
+.transcript-speaker {
+  display: inline-block;
+  margin-right: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-secondary);
+}
+
+.go-live-panel .btn-live {
+  min-width: 140px;
+}
+
+@media (max-width: 960px) {
+  .tech-operator-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─────────────────────────────────────────────────
    Auth Pages
    ───────────────────────────────────────────────── */
 .auth-shell {

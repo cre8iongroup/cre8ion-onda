@@ -20,18 +20,15 @@ This is a proof-of-concept, not production. No code signing, no Tech Panel UI, n
 
 ```bash
 # 1) Next.js (repo root) — webhook + optional sdk-upload helpers
-cp .env.local.example .env.local   # or edit existing
-# add:
-#   RECALL_WEBHOOK_SECRET=...
-#   RECALL_API_KEY=...
-#   RECALL_REGION=us-west-2
-#   GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json
+cp .env.example .env.local   # or edit existing
+# fill Firebase + GOOGLE_APPLICATION_CREDENTIALS + RECALL_WEBHOOK_SECRET
+# (optional RECALL_API_KEY / RECALL_REGION if using Next helpers)
 npm run dev
 
 # 2) Electron spike
 cd electron-spike
 cp .env.example .env
-# fill RECALL_API_KEY, RECALL_WEBHOOK_SECRET, SESSION_ID, ONDA_WEBHOOK_URL
+# fill RECALL_API_KEY, RECALL_WEBHOOK_SECRET (same secret as root), SESSION_ID
 npm install
 npm start
 ```

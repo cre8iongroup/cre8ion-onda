@@ -221,6 +221,7 @@ export interface AuditLogEntry {
 // Recall.AI Webhook Payload
 // ─────────────────────────────────────────────
 
+/** Onda-normalized payload (Electron forwarder / Tech bridge). */
 export interface RecallWebhookPayload {
   sessionId: string
   text: string
@@ -228,6 +229,20 @@ export interface RecallWebhookPayload {
   timestamp: number           // Unix ms
   isFinal: boolean
   sequenceNumber?: number
+}
+
+/**
+ * Native Recall Desktop SDK realtime transcript envelope (transcript.data).
+ * When POSTed directly to our webhook, pass sessionId as ?sessionId=.
+ */
+export interface RecallNativeTranscriptEvent {
+  event: 'transcript.data' | 'transcript.partial_data' | string
+  data?: {
+    data?: {
+      words?: Array<{ text?: string; word?: string }>
+      participant?: { id?: number | string; name?: string | null }
+    }
+  }
 }
 
 // ─────────────────────────────────────────────

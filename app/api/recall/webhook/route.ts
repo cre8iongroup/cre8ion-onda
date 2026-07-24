@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAdminDatabase } from '@/lib/firebase/admin'
-import type { RecallWebhookPayload } from '@/types'
+import { pushRtdbJson } from '@/lib/firebase/admin'
+import { normalizeToOndaPayload } from '@/lib/recall/normalizeTranscript'
 
 /**
  * POST /api/recall/webhook
  *
- * Receives transcript chunks from the Recall.AI Desktop SDK running on the
- * tech operator's laptop. Validates the shared secret header, then writes
- * the chunk to the Realtime Database ephemeral buffer via Admin SDK.
+ * Receives transcript chunks from:
+ *  1. Onda Electron spike / Tech desktop bridge — custom payload + x-recall-secret
+ *  2. Recall realtime `webhook` endpoints — native transcript.data envelope
+ *     (sessionId via ?sessionId= query param — required for native format)
  *
- * No credentials are stored on the operator's machine — they just need
- * the webhook URL and the shared secret (set in Recall.AI SDK config).
+ * Writes to RTDB: liveSessions/{sessionId}/chunks
+ *
+ * Uses REST (pushRtdbJson) instead of the Admin WebSocket client so auth
+ * failures return quickly instead of hanging ~5 minutes on
+ * RECONNECT_MAX_DELAY_DEFAULT.
  */
 export async function POST(request: NextRequest) {
-  // ── 1. Shared secret validation
   const secret = request.headers.get('x-recall-secret')
   const expected = process.env.RECALL_WEBHOOK_SECRET
 
@@ -22,49 +25,72 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // ── 2. Parse payload
-  let payload: Partial<RecallWebhookPayload>
+  let body: unknown
   try {
-    payload = await request.json()
+    body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { sessionId, text, speaker, timestamp, isFinal, sequenceNumber } = payload
+  const sessionIdFromQuery = request.nextUrl.searchParams.get('sessionId')
+  const bodyObj = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
+  const sessionId =
+    (typeof bodyObj.sessionId === 'string' ? bodyObj.sessionId : null) ??
+    sessionIdFromQuery
 
-  if (!sessionId || typeof text !== 'string') {
-    return NextResponse.json({ error: 'Missing sessionId or text' }, { status: 400 })
+  if (!sessionId) {
+    return NextResponse.json(
+      { error: 'Missing sessionId (body.sessionId or ?sessionId=)' },
+      { status: 400 },
+    )
   }
 
-  // ── 3. Write to RTDB ephemeral buffer
+  const eventHint =
+    typeof bodyObj.event === 'string' ? bodyObj.event : request.nextUrl.searchParams.get('event')
+
+  // Skip non-transcript Recall lifecycle events if they land here
+  if (
+    typeof bodyObj.event === 'string' &&
+    bodyObj.event !== 'transcript.data' &&
+    bodyObj.event !== 'transcript.partial_data' &&
+    typeof bodyObj.text !== 'string'
+  ) {
+    return NextResponse.json({ ok: true, skipped: bodyObj.event }, { status: 200 })
+  }
+
+  const normalized = normalizeToOndaPayload(body, sessionId, { eventHint })
+  if (!normalized) {
+    return NextResponse.json({ error: 'Unrecognized transcript payload' }, { status: 400 })
+  }
+
+  const rtdbPath = `liveSessions/${normalized.sessionId}/chunks`
+  const payload = {
+    text: normalized.text,
+    speakerLabel: normalized.speaker ?? null,
+    timestamp: normalized.timestamp,
+    sequenceNumber: normalized.sequenceNumber ?? 0,
+    isFinalized: normalized.isFinal,
+    translations: {},
+  }
+
   try {
-    const db = getAdminDatabase()
-    const chunksRef = db.ref(`liveSessions/${sessionId}/chunks`)
-
-    await chunksRef.push({
-      text,
-      speakerLabel:   speaker   ?? null,
-      timestamp:      timestamp  ?? Date.now(),
-      sequenceNumber: sequenceNumber ?? 0,
-      isFinalized:    isFinal    ?? false,
-      translations:   {},
+    const { name: chunkId } = await pushRtdbJson(rtdbPath, payload, { timeoutMs: 15_000 })
+    console.info('[recall/webhook] chunk written', {
+      sessionId: normalized.sessionId,
+      chunkId,
     })
-
-    return NextResponse.json({ ok: true }, { status: 200 })
+    return NextResponse.json({ ok: true, chunkId }, { status: 200 })
   } catch (err) {
     console.error('[recall/webhook] RTDB write failed:', err)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }
 
-/**
- * OPTIONS — CORS preflight for Recall.AI Desktop SDK cross-origin POST
- */
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
     headers: {
-      'Access-Control-Allow-Origin':  '*',
+      'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, x-recall-secret',
     },

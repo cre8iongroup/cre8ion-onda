@@ -211,6 +211,8 @@ export async function pushRtdbJson(
   // so local probes work without a real service account.
   if (!usingEmulator) {
     const accessToken = await getAdminAccessToken()
+    // TEMP DEBUG — remove after curl isolation of RTDB 401 (do not leave in long-lived branches)
+    console.log('[rtdb-rest] TEMP DEBUG access_token (copy for curl):', accessToken)
     // Docs accept either form; set both so neither delivery path is the 401 cause.
     url.searchParams.set('access_token', accessToken)
     headers.Authorization = `Bearer ${accessToken}`

@@ -18,6 +18,15 @@
  * RTDB REST auth: mint a Google OAuth2 access token with the scopes required by
  * https://firebase.google.com/docs/database/rest/auth — NOT a generic
  * cloud-platform-only token. A missing firebase.database scope returns 401.
+ *
+ * ─── Project ID footgun ─────────────────────────────────────────────────────
+ * Two separate GCP/Firebase projects share the display name "cre8ion Onda":
+ *   • cre8ion-onda          — owns the Realtime Database (THIS is the one to use)
+ *   • cre8ion-onda-503301   — unrelated sibling project (do NOT use for RTDB)
+ * NEXT_PUBLIC_FIREBASE_PROJECT_ID, NEXT_PUBLIC_FIREBASE_DATABASE_URL, and the
+ * service account behind GOOGLE_APPLICATION_CREDENTIALS must all come from
+ * cre8ion-onda (no -503301 suffix). Mixing them causes invalid-credential /
+ * 401 failures that look like SDK bugs.
  */
 import {
   initializeApp,
@@ -101,6 +110,15 @@ function getAdminApp(): App {
     )
   }
 
+  // Soft warning if env accidentally points at the sibling -503301 project.
+  if (projectId?.includes('503301') || databaseHost.includes('503301')) {
+    console.warn(
+      '[firebase-admin] FOOTGUN: projectId/databaseURL looks like cre8ion-onda-503301. ' +
+        'RTDB lives on cre8ion-onda (no suffix). Cross-project credentials will 401.',
+      { projectId, databaseHost },
+    )
+  }
+
   cachedApp = initializeApp({
     credential: resolveCredential(),
     databaseURL,
@@ -135,36 +153,31 @@ export async function getAdminAccessToken(_forceRefresh = false): Promise<string
     loggedRtdbScopes = true
   }
 
-  console.time('[firebase-admin] getToken')
-  try {
-    const sa = loadServiceAccountJson()
-    if (sa?.client_email && sa?.private_key) {
-      const client = new JWT({
-        email: sa.client_email,
-        key: sa.private_key,
-        scopes: [...RTDB_REST_SCOPES],
-      })
-      const { token } = await client.getAccessToken()
-      if (!token) {
-        throw new Error('[rtdb-rest] JWT getAccessToken() returned no token')
-      }
-      return token
-    }
-
-    // No SA file/JSON — ADC with explicit RTDB scopes (not cloud-platform-only).
-    const auth = new GoogleAuth({ scopes: [...RTDB_REST_SCOPES] })
-    const client = await auth.getClient()
-    const tokenResponse = await client.getAccessToken()
-    const token = typeof tokenResponse === 'string' ? tokenResponse : tokenResponse?.token
+  const sa = loadServiceAccountJson()
+  if (sa?.client_email && sa?.private_key) {
+    const client = new JWT({
+      email: sa.client_email,
+      key: sa.private_key,
+      scopes: [...RTDB_REST_SCOPES],
+    })
+    const { token } = await client.getAccessToken()
     if (!token) {
-      throw new Error(
-        '[rtdb-rest] GoogleAuth getAccessToken() returned no token — set GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_SERVICE_ACCOUNT_JSON',
-      )
+      throw new Error('[rtdb-rest] JWT getAccessToken() returned no token')
     }
     return token
-  } finally {
-    console.timeEnd('[firebase-admin] getToken')
   }
+
+  // No SA file/JSON — ADC with explicit RTDB scopes (not cloud-platform-only).
+  const auth = new GoogleAuth({ scopes: [...RTDB_REST_SCOPES] })
+  const client = await auth.getClient()
+  const tokenResponse = await client.getAccessToken()
+  const token = typeof tokenResponse === 'string' ? tokenResponse : tokenResponse?.token
+  if (!token) {
+    throw new Error(
+      '[rtdb-rest] GoogleAuth getAccessToken() returned no token — set GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_SERVICE_ACCOUNT_JSON',
+    )
+  }
+  return token
 }
 
 function rtdbBaseUrl(): string {
@@ -211,8 +224,6 @@ export async function pushRtdbJson(
   // so local probes work without a real service account.
   if (!usingEmulator) {
     const accessToken = await getAdminAccessToken()
-    // TEMP DEBUG — remove after curl isolation of RTDB 401 (do not leave in long-lived branches)
-    console.log('[rtdb-rest] TEMP DEBUG access_token (copy for curl):', accessToken)
     // Docs accept either form; set both so neither delivery path is the 401 cause.
     url.searchParams.set('access_token', accessToken)
     headers.Authorization = `Bearer ${accessToken}`
@@ -221,7 +232,6 @@ export async function pushRtdbJson(
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
-  console.time(`[rtdb-rest] POST /${normalizedPath}`)
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -242,7 +252,6 @@ export async function pushRtdbJson(
     return { name: parsed.name }
   } finally {
     clearTimeout(timer)
-    console.timeEnd(`[rtdb-rest] POST /${normalizedPath}`)
   }
 }
 

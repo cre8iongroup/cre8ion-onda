@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   collection,
   onSnapshot,
@@ -20,6 +22,7 @@ function formatDateRange(start?: Timestamp, end?: Timestamp): string {
 }
 
 export default function ShowsDashboard() {
+  const router = useRouter()
   const { user, capabilities } = useAuthContext()
   const [shows, setShows] = useState<WithId<ShowDoc>[]>([])
   const [loadingShows, setLoadingShows] = useState(true)
@@ -139,7 +142,12 @@ export default function ShowsDashboard() {
       ) : (
         <div className="show-list">
           {shows.map((show) => (
-            <article key={show.id} className="card show-list-item">
+            <Link
+              key={show.id}
+              id={`link-show-${show.id}`}
+              href={`/admin/shows/${show.id}`}
+              className="card card-interactive show-list-item"
+            >
               <div className="flex items-center justify-between gap-4" style={{ flexWrap: 'wrap' }}>
                 <div>
                   <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-1)' }}>
@@ -158,7 +166,7 @@ export default function ShowsDashboard() {
                   {show.portalPublished ? 'Published' : 'Draft'}
                 </span>
               </div>
-            </article>
+            </Link>
           ))}
         </div>
       )}
@@ -168,8 +176,9 @@ export default function ShowsDashboard() {
         onClose={() => setModalOpen(false)}
         createdBy={user?.uid || ''}
         canCreate={canCreate}
-        onCreated={() => {
+        onCreated={(showId) => {
           setFlash('Show created.')
+          router.push(`/admin/shows/${showId}`)
         }}
       />
     </div>

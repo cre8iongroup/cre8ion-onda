@@ -32,8 +32,16 @@ cd electron-spike
 cp .env.example .env
 # fill RECALL_API_KEY, RECALL_WEBHOOK_SECRET, ONDA_API_BASE
 npm install
-npm start
+npm start   # builds React renderer (Vite) then launches Electron
 ```
+
+### Renderer (Stage 1 — React + Vite)
+
+- Source: `renderer-src/` (React)
+- Build output: `renderer/` (loaded by existing `main.js` via `loadFile`)
+- Styles: `renderer-src/styles/onda.css` — tokens/primitives copied from `app/globals.css`
+- IPC: unchanged — `preload.js` → `window.ondaSpike`
+- Browser-only preview (no Electron): `npm run build:renderer && npm run preview:renderer`
 
 ## Operator flow
 

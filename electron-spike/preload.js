@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('ondaSpike', {
+  unlock: (credential) => ipcRenderer.invoke('spike:unlock', credential),
+  selectSession: (payload) => ipcRenderer.invoke('spike:select-session', payload),
+  clearSession: () => ipcRenderer.invoke('spike:clear-session'),
   start: () => ipcRenderer.invoke('spike:start'),
   stop: () => ipcRenderer.invoke('spike:stop'),
   getConfig: () => ipcRenderer.invoke('spike:get-config'),

@@ -60,6 +60,54 @@ export const RTDB_REST_SCOPES = [
 let cachedApp: App | undefined
 let loggedRtdbScopes = false
 
+/** The only Firebase project Onda may use for Admin/RTDB/Firestore. */
+export const REQUIRED_FIREBASE_PROJECT_ID = 'cre8ion-onda'
+
+/**
+ * Fail loudly if env points at the sibling cre8ion-onda-503301 project (or anything
+ * other than cre8ion-onda). Called on Admin init and from /api/health.
+ */
+export function assertCorrectFirebaseProject(opts?: {
+  projectId?: string | null
+  databaseHost?: string | null
+}): { projectId: string; databaseHost: string | null } {
+  const projectId =
+    opts?.projectId?.trim() ||
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim() ||
+    ''
+  const databaseURL = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL?.trim() || ''
+  let databaseHost = opts?.databaseHost?.trim() || null
+  if (!databaseHost && databaseURL) {
+    try {
+      databaseHost = new URL(databaseURL).host
+    } catch {
+      databaseHost = null
+    }
+  }
+
+  const looksLikeSibling =
+    projectId.includes('503301') ||
+    Boolean(databaseHost?.includes('503301')) ||
+    databaseURL.includes('503301')
+
+  if (looksLikeSibling || (projectId && projectId !== REQUIRED_FIREBASE_PROJECT_ID)) {
+    throw new Error(
+      `[firebase-admin] FATAL: Firebase project must be "${REQUIRED_FIREBASE_PROJECT_ID}" ` +
+        `(got projectId=${JSON.stringify(projectId || '(empty)')}, ` +
+        `databaseHost=${JSON.stringify(databaseHost || '(empty)')}). ` +
+        `Do NOT use cre8ion-onda-503301 — RTDB and show data live on cre8ion-onda.`,
+    )
+  }
+
+  if (!projectId) {
+    throw new Error(
+      `[firebase-admin] FATAL: NEXT_PUBLIC_FIREBASE_PROJECT_ID is required and must be "${REQUIRED_FIREBASE_PROJECT_ID}".`,
+    )
+  }
+
+  return { projectId, databaseHost }
+}
+
 function resolveCredential() {
   const inline = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim()
   if (inline) {
@@ -110,14 +158,8 @@ function getAdminApp(): App {
     )
   }
 
-  // Soft warning if env accidentally points at the sibling -503301 project.
-  if (projectId?.includes('503301') || databaseHost.includes('503301')) {
-    console.warn(
-      '[firebase-admin] FOOTGUN: projectId/databaseURL looks like cre8ion-onda-503301. ' +
-        'RTDB lives on cre8ion-onda (no suffix). Cross-project credentials will 401.',
-      { projectId, databaseHost },
-    )
-  }
+  // Hard fail: cre8ion-onda vs cre8ion-onda-503301 collision (see header comment).
+  assertCorrectFirebaseProject({ projectId, databaseHost })
 
   cachedApp = initializeApp({
     credential: resolveCredential(),
@@ -208,7 +250,44 @@ export async function pushRtdbJson(
   value: unknown,
   opts?: { timeoutMs?: number },
 ): Promise<{ name: string }> {
-  // Ensure Admin app is initialized (logs projectId / databaseHost once).
+  const result = await rtdbRestWrite('POST', path, value, opts)
+  const parsed = result as { name?: string }
+  if (!parsed.name) {
+    throw new Error(`[rtdb-rest] POST /${path} returned no name: ${JSON.stringify(result).slice(0, 200)}`)
+  }
+  return { name: parsed.name }
+}
+
+/**
+ * Set (overwrite) a JSON value at an RTDB path via REST PUT.
+ * Used for feedState / metadata writes that must not create a push-id child.
+ */
+export async function setRtdbJson(
+  path: string,
+  value: unknown,
+  opts?: { timeoutMs?: number },
+): Promise<void> {
+  await rtdbRestWrite('PUT', path, value, opts)
+}
+
+/**
+ * Merge-update a JSON object at an RTDB path via REST PATCH.
+ */
+export async function updateRtdbJson(
+  path: string,
+  value: Record<string, unknown>,
+  opts?: { timeoutMs?: number },
+): Promise<void> {
+  await rtdbRestWrite('PATCH', path, value, opts)
+}
+
+async function rtdbRestWrite(
+  method: 'POST' | 'PUT' | 'PATCH',
+  path: string,
+  value: unknown,
+  opts?: { timeoutMs?: number },
+): Promise<unknown> {
+  // Ensure Admin app is initialized (logs projectId / databaseHost once + project guard).
   getAdminApp()
 
   const timeoutMs = opts?.timeoutMs ?? 15_000
@@ -220,11 +299,8 @@ export async function pushRtdbJson(
     'Content-Type': 'application/json',
   }
 
-  // Emulator accepts unauthenticated writes when rules allow; skip token minting
-  // so local probes work without a real service account.
   if (!usingEmulator) {
     const accessToken = await getAdminAccessToken()
-    // Docs accept either form; set both so neither delivery path is the 401 cause.
     url.searchParams.set('access_token', accessToken)
     headers.Authorization = `Bearer ${accessToken}`
   }
@@ -234,7 +310,7 @@ export async function pushRtdbJson(
 
   try {
     const res = await fetch(url, {
-      method: 'POST',
+      method,
       headers,
       body: JSON.stringify(value),
       signal: controller.signal,
@@ -242,14 +318,10 @@ export async function pushRtdbJson(
     const text = await res.text()
     if (!res.ok) {
       throw new Error(
-        `[rtdb-rest] POST /${normalizedPath} failed: ${res.status} ${text.slice(0, 500)}`,
+        `[rtdb-rest] ${method} /${normalizedPath} failed: ${res.status} ${text.slice(0, 500)}`,
       )
     }
-    const parsed = text ? (JSON.parse(text) as { name?: string }) : {}
-    if (!parsed.name) {
-      throw new Error(`[rtdb-rest] POST /${normalizedPath} returned no name: ${text.slice(0, 200)}`)
-    }
-    return { name: parsed.name }
+    return text ? JSON.parse(text) : null
   } finally {
     clearTimeout(timer)
   }

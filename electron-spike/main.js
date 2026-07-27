@@ -1,13 +1,12 @@
 /**
- * Onda Electron spike — Recall Desktop SDK adhoc/in-person audio capture.
+ * Onda Electron — Tech Operator Step 1
  *
- * Flow:
- *  1. init SDK + request mic (and log other macOS permission prompts)
- *  2. Start → create sdk_upload → prepareDesktopAudioRecording → startRecording
- *  3. realtime-event transcript.* → normalize → POST Onda webhook (x-recall-secret)
- *  4. Stop → stopRecording → poll Retrieve Recording → download audio if ready
- *
- * Mac-first. Linux cloud agents cannot exercise native capture.
+ * Replaces hardcoded sessionId / webhook URL with:
+ *  1. techCredential unlock → show
+ *  2. session selection (Firestore via API)
+ *  3. startSession / stopSession API (Electron never writes Firestore)
+ *  4. per-session webhook /api/webhook/[sessionId]
+ *  5. Loud fail if Firebase project ≠ cre8ion-onda
  */
 
 const path = require('path')
@@ -20,15 +19,19 @@ dotenv.config({ path: path.join(__dirname, '.env') })
 const { createSdkUpload, retrieveRecording, downloadToFile } = require('./lib/recallApi')
 const { normalizeToOndaPayload } = require('./lib/normalizeTranscript')
 
+const REQUIRED_FIREBASE_PROJECT_ID = 'cre8ion-onda'
+
 const CONFIG = {
   apiKey: process.env.RECALL_API_KEY || '',
   region: process.env.RECALL_REGION || 'us-west-2',
-  webhookUrl: process.env.ONDA_WEBHOOK_URL || 'http://localhost:3000/api/recall/webhook',
+  ondaApiBase: (process.env.ONDA_API_BASE || 'http://localhost:3000').replace(/\/$/, ''),
   webhookSecret: process.env.RECALL_WEBHOOK_SECRET || '',
-  sessionId: process.env.SESSION_ID || 'spike-test-session',
-  publicWebhookUrl: process.env.ONDA_PUBLIC_WEBHOOK_URL || '',
+  publicWebhookBase: process.env.ONDA_PUBLIC_WEBHOOK_BASE || '',
   languageCode: process.env.LANGUAGE_CODE || 'en',
 }
+
+/** @type {{ credential: string, showId: string, showName: string, sessionId: string, sessionLabel: string, lifecycleStatus: string, webhookUrl: string } | null} */
+let activeContext = null
 
 let mainWindow = null
 let RecallAiSdk = null
@@ -39,6 +42,8 @@ let activeRecordingId = null
 let activeUploadId = null
 let sequenceNumber = 0
 const spokenAtBySeq = new Map()
+let projectCheckOk = false
+let projectCheckError = null
 
 function sendLog(level, message, extra) {
   const payload = {
@@ -56,6 +61,70 @@ function sendLog(level, message, extra) {
 function sendStatus(patch) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('spike:status', patch)
+  }
+}
+
+function webhookUrlForSession(sessionId) {
+  return `${CONFIG.ondaApiBase}/api/webhook/${encodeURIComponent(sessionId)}`
+}
+
+async function ondaFetch(pathname, { method = 'GET', body } = {}) {
+  const url = `${CONFIG.ondaApiBase}${pathname}`
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'content-type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const text = await res.text()
+  let json = null
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch {
+    json = { raw: text }
+  }
+  if (!res.ok) {
+    const err = new Error(json?.error || `HTTP ${res.status} ${pathname}`)
+    err.status = res.status
+    err.code = json?.code
+    err.detail = json
+    throw err
+  }
+  return json
+}
+
+/**
+ * Startup check: Next /api/health must report cre8ion-onda.
+ * Fails loudly (UI + log) — does not silently continue.
+ */
+async function assertOndaFirebaseProject() {
+  try {
+    const health = await ondaFetch('/api/health')
+    const projectId = health?.firebaseProjectId
+    if (health?.status !== 'ok' || projectId !== REQUIRED_FIREBASE_PROJECT_ID) {
+      const msg =
+        health?.error ||
+        `Firebase project must be "${REQUIRED_FIREBASE_PROJECT_ID}" (got ${JSON.stringify(projectId)})`
+      projectCheckOk = false
+      projectCheckError = msg
+      sendLog('error', 'FATAL: Firebase project check failed', { health })
+      sendStatus({ projectCheckOk: false, projectCheckError: msg })
+      return false
+    }
+    projectCheckOk = true
+    projectCheckError = null
+    sendLog('info', 'Firebase project check OK', {
+      projectId,
+      databaseHost: health.databaseHost,
+    })
+    sendStatus({ projectCheckOk: true, projectCheckError: null, firebaseProjectId: projectId })
+    return true
+  } catch (err) {
+    const msg = `Cannot reach Onda API health at ${CONFIG.ondaApiBase}/api/health — ${err.message}. Is Next.js running with cre8ion-onda env?`
+    projectCheckOk = false
+    projectCheckError = msg
+    sendLog('error', 'FATAL: Firebase project check failed', { message: err.message })
+    sendStatus({ projectCheckOk: false, projectCheckError: msg })
+    return false
   }
 }
 
@@ -140,12 +209,17 @@ function wireSdkEvents() {
       return
     }
 
+    if (!activeContext?.sessionId) {
+      sendLog('warn', 'Transcript received but no active session context')
+      return
+    }
+
     const receivedAt = Date.now()
     sequenceNumber += 1
     const seq = sequenceNumber
     spokenAtBySeq.set(seq, receivedAt)
 
-    const normalized = normalizeToOndaPayload(evt, CONFIG.sessionId, {
+    const normalized = normalizeToOndaPayload(evt, activeContext.sessionId, {
       sequenceNumber: seq,
       eventHint: eventName,
     })
@@ -159,10 +233,10 @@ function wireSdkEvents() {
       speaker: normalized.speaker,
       isFinal: normalized.isFinal,
       seq,
+      sessionId: activeContext.sessionId,
     })
     sendStatus({ lastTranscript: normalized.text, lastTranscriptAt: receivedAt })
 
-    // Forward finals (and optionally partials) to Onda webhook
     if (!CONFIG.webhookSecret) {
       sendLog('warn', 'RECALL_WEBHOOK_SECRET missing — skipping webhook forward')
       return
@@ -170,7 +244,7 @@ function wireSdkEvents() {
 
     try {
       const t0 = Date.now()
-      const res = await fetch(CONFIG.webhookUrl, {
+      const res = await fetch(activeContext.webhookUrl, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -185,8 +259,8 @@ function wireSdkEvents() {
       } else {
         sendLog('info', `Webhook OK (${res.status}) in ${latencyMs}ms`, {
           seq,
-          // Rough end-to-end: speak→chunk receive is SDK latency; this is forward RTT only
           webhookRttMs: latencyMs,
+          path: activeContext.webhookUrl,
         })
         sendStatus({ lastWebhookOkAt: Date.now(), lastWebhookRttMs: latencyMs })
       }
@@ -215,7 +289,7 @@ async function initSdk() {
     })
     sdkReady = true
     sendLog('info', `Recall SDK init OK`, { apiUrl, platform: process.platform })
-    sendStatus({ sdkReady: true, region: CONFIG.region, sessionId: CONFIG.sessionId })
+    sendStatus({ sdkReady: true, region: CONFIG.region })
     wireSdkEvents()
     await requestMacPermissions()
   } catch (err) {
@@ -227,25 +301,57 @@ async function initSdk() {
 async function startRecording() {
   if (recording) {
     sendLog('warn', 'Already recording')
-    return
+    return { ok: false, error: 'Already recording' }
+  }
+  if (!projectCheckOk) {
+    const msg = projectCheckError || 'Firebase project check failed'
+    sendLog('error', msg)
+    return { ok: false, error: msg }
+  }
+  if (!activeContext?.sessionId) {
+    return { ok: false, error: 'Select a session first' }
   }
   if (!CONFIG.apiKey) {
     sendLog('error', 'RECALL_API_KEY missing in electron-spike/.env')
-    return
+    return { ok: false, error: 'RECALL_API_KEY missing' }
   }
   if (!sdkReady || !RecallAiSdk) {
     sendLog('error', 'SDK not ready')
-    return
+    return { ok: false, error: 'SDK not ready' }
   }
 
   try {
-    sendLog('info', 'Creating Desktop SDK upload…', { sessionId: CONFIG.sessionId })
+    // 1) Authoritative live transition via API (not Firestore from Electron)
+    sendLog('info', 'Calling startSession…', {
+      showId: activeContext.showId,
+      sessionId: activeContext.sessionId,
+    })
+    const started = await ondaFetch('/api/tech/sessions/start', {
+      method: 'POST',
+      body: {
+        credential: activeContext.credential,
+        showId: activeContext.showId,
+        sessionId: activeContext.sessionId,
+      },
+    })
+    activeContext.lifecycleStatus = started.session?.lifecycleStatus || 'live'
+    sendStatus({
+      lifecycleStatus: activeContext.lifecycleStatus,
+      session: started.session,
+    })
+    sendLog('info', 'startSession OK — session is live', started.session)
+
+    // 2) Create Recall upload
+    sendLog('info', 'Creating Desktop SDK upload…', { sessionId: activeContext.sessionId })
+    const publicWebhookUrl = CONFIG.publicWebhookBase
+      ? `${CONFIG.publicWebhookBase.replace(/\/$/, '')}/api/webhook/${activeContext.sessionId}`
+      : null
     const upload = await createSdkUpload({
       apiKey: CONFIG.apiKey,
       region: CONFIG.region,
-      sessionId: CONFIG.sessionId,
+      sessionId: activeContext.sessionId,
       languageCode: CONFIG.languageCode,
-      publicWebhookUrl: CONFIG.publicWebhookUrl || null,
+      publicWebhookUrl,
     })
     activeUploadId = upload.id
     activeRecordingId = upload.recordingId
@@ -254,6 +360,25 @@ async function startRecording() {
       uploadId: upload.id,
       recordingId: upload.recordingId,
     })
+
+    // 3) Bind recordingId → session for Svix lifecycle resolution
+    try {
+      await ondaFetch('/api/tech/sessions/bind-recording', {
+        method: 'POST',
+        body: {
+          credential: activeContext.credential,
+          showId: activeContext.showId,
+          sessionId: activeContext.sessionId,
+          recordingId: upload.recordingId,
+          uploadId: upload.id,
+        },
+      })
+      sendLog('info', 'bind-recording OK', { recordingId: upload.recordingId })
+    } catch (err) {
+      sendLog('warn', 'bind-recording failed (lifecycle ended resolution may break)', {
+        message: err.message,
+      })
+    }
 
     sendLog('info', 'prepareDesktopAudioRecording()…')
     const windowId = await RecallAiSdk.prepareDesktopAudioRecording()
@@ -268,21 +393,93 @@ async function startRecording() {
     recording = true
     sendStatus({ recording: true })
     sendLog('info', 'startRecording() resolved — speak into the mic')
+    return { ok: true }
   } catch (err) {
     sendLog('error', 'startRecording flow failed', {
       message: err?.message,
+      code: err?.code,
       detail: err?.detail,
       stack: err?.stack,
     })
     recording = false
     sendStatus({ recording: false })
+    return { ok: false, error: err?.message || 'start failed', code: err?.code }
+  }
+}
+
+async function notifyUploadComplete() {
+  if (!activeContext?.sessionId || !CONFIG.webhookSecret) return
+  try {
+    const res = await fetch(activeContext.webhookUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-recall-secret': CONFIG.webhookSecret,
+      },
+      body: JSON.stringify({
+        event: 'sdk_upload.complete',
+        data: {
+          data: { code: 'complete', sub_code: null, updated_at: new Date().toISOString() },
+          recording: {
+            id: activeRecordingId,
+            metadata: { sessionId: activeContext.sessionId },
+          },
+          sdk_upload: {
+            id: activeUploadId,
+            metadata: { sessionId: activeContext.sessionId },
+          },
+        },
+      }),
+    })
+    const text = await res.text()
+    sendLog(
+      res.ok ? 'info' : 'error',
+      `Forwarded sdk_upload.complete → ended (${res.status})`,
+      { body: text },
+    )
+    if (res.ok) {
+      activeContext.lifecycleStatus = 'ended'
+      sendStatus({ lifecycleStatus: 'ended' })
+    }
+  } catch (err) {
+    sendLog('error', 'Failed to forward sdk_upload.complete', { message: err.message })
   }
 }
 
 async function stopRecording() {
+  if (!activeContext?.sessionId) {
+    return { ok: false, error: 'No active session' }
+  }
+
+  try {
+    // Intermediate stopping state — NOT ended
+    sendLog('info', 'Calling stopSession (lifecycle → stopping)…')
+    const stopped = await ondaFetch('/api/tech/sessions/stop', {
+      method: 'POST',
+      body: {
+        credential: activeContext.credential,
+        showId: activeContext.showId,
+        sessionId: activeContext.sessionId,
+      },
+    })
+    activeContext.lifecycleStatus = stopped.session?.lifecycleStatus || 'stopping'
+    sendStatus({
+      lifecycleStatus: activeContext.lifecycleStatus,
+      session: stopped.session,
+    })
+    sendLog('info', 'stopSession OK — waiting for Recall complete before ended', stopped.session)
+  } catch (err) {
+    sendLog('error', 'stopSession API failed', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+    })
+    // Continue stopping the SDK anyway so local capture ends
+  }
+
   if (!RecallAiSdk) {
     sendLog('error', 'SDK not loaded')
-    return
+    return { ok: false, error: 'SDK not loaded' }
   }
 
   try {
@@ -304,7 +501,7 @@ async function stopRecording() {
 
   if (!activeRecordingId) {
     sendLog('warn', 'No recording_id to retrieve')
-    return
+    return { ok: true, warning: 'no recording id' }
   }
 
   sendLog('info', 'Polling Retrieve Recording for downloadable audio…', {
@@ -315,6 +512,7 @@ async function stopRecording() {
   fs.mkdirSync(downloadsDir, { recursive: true })
 
   const maxAttempts = 30
+  let audioSaved = false
   for (let i = 1; i <= maxAttempts; i++) {
     try {
       const rec = await retrieveRecording({
@@ -334,10 +532,10 @@ async function stopRecording() {
         const saved = await downloadToFile(rec.audioUrl, dest)
         sendLog('info', 'Audio downloaded', saved)
         sendStatus({ audioDownloadPath: saved.path, audioBytes: saved.bytes })
-        return
+        audioSaved = true
+        break
       }
 
-      // Upload may still be processing
       await new Promise((r) => setTimeout(r, 2000))
     } catch (err) {
       sendLog('warn', `Retrieve attempt ${i} failed`, {
@@ -348,19 +546,31 @@ async function stopRecording() {
     }
   }
 
-  sendLog('error', 'Timed out waiting for audio download URL — check Recall dashboard / sdk_upload.complete')
+  if (!audioSaved) {
+    sendLog(
+      'error',
+      'Timed out waiting for audio download URL — check Recall dashboard / sdk_upload.complete',
+    )
+  }
+
+  // Local/spike fallback: when audio is ready (or after poll timeout with recording id),
+  // forward sdk_upload.complete so Firestore flips to ended without requiring Svix
+  // dashboard wiring. Production should also configure Recall Svix → /api/recall/webhook.
+  await notifyUploadComplete()
+
+  return { ok: true, audioSaved }
 }
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 880,
-    height: 720,
+    width: 920,
+    height: 780,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
-    title: 'Onda Recall Adhoc Spike',
+    title: 'Onda Tech Operator — Step 1',
   })
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
 }
@@ -368,14 +578,20 @@ function createWindow() {
 app.whenReady().then(async () => {
   createWindow()
   sendStatus({
-    sessionId: CONFIG.sessionId,
     region: CONFIG.region,
-    webhookUrl: CONFIG.webhookUrl,
+    ondaApiBase: CONFIG.ondaApiBase,
     hasApiKey: Boolean(CONFIG.apiKey),
     hasWebhookSecret: Boolean(CONFIG.webhookSecret),
     platform: process.platform,
+    projectCheckOk: false,
   })
-  await initSdk()
+
+  const ok = await assertOndaFirebaseProject()
+  if (ok) {
+    await initSdk()
+  } else {
+    sendLog('error', 'Skipping SDK init until Firebase project check passes')
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -386,20 +602,87 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-ipcMain.handle('spike:start', async () => {
-  await startRecording()
+ipcMain.handle('spike:unlock', async (_evt, credential) => {
+  if (!projectCheckOk) {
+    return { ok: false, error: projectCheckError || 'Firebase project check failed' }
+  }
+  try {
+    const result = await ondaFetch('/api/tech/unlock', {
+      method: 'POST',
+      body: { credential },
+    })
+    // Stash credential in main only — renderer keeps a copy for subsequent calls via IPC
+    sendLog('info', 'Show unlocked', {
+      showId: result.show?.id,
+      name: result.show?.name,
+      sessionCount: result.sessions?.length ?? 0,
+    })
+    return { ok: true, ...result, credential }
+  } catch (err) {
+    sendLog('warn', 'Unlock failed', { message: err.message, code: err.code })
+    return {
+      ok: false,
+      error: err.message || 'Unlock failed',
+      code: err.code,
+    }
+  }
+})
+
+ipcMain.handle('spike:select-session', async (_evt, payload) => {
+  const { credential, showId, showName, session } = payload || {}
+  if (!credential || !showId || !session?.id) {
+    return { ok: false, error: 'Missing credential, showId, or session' }
+  }
+  activeContext = {
+    credential,
+    showId,
+    showName: showName || showId,
+    sessionId: session.id,
+    sessionLabel: session.friendlyName || session.title || session.id,
+    lifecycleStatus: session.lifecycleStatus || 'unknown',
+    webhookUrl: webhookUrlForSession(session.id),
+  }
+  sequenceNumber = 0
+  sendLog('info', 'Session selected', {
+    sessionId: activeContext.sessionId,
+    lifecycleStatus: activeContext.lifecycleStatus,
+    webhookUrl: activeContext.webhookUrl,
+  })
+  sendStatus({
+    showId: activeContext.showId,
+    showName: activeContext.showName,
+    sessionId: activeContext.sessionId,
+    sessionLabel: activeContext.sessionLabel,
+    lifecycleStatus: activeContext.lifecycleStatus,
+    webhookUrl: activeContext.webhookUrl,
+  })
+  return { ok: true, context: { ...activeContext, credential: undefined } }
+})
+
+ipcMain.handle('spike:clear-session', async () => {
+  activeContext = null
+  sendStatus({
+    showId: null,
+    showName: null,
+    sessionId: null,
+    sessionLabel: null,
+    lifecycleStatus: null,
+    webhookUrl: null,
+  })
   return { ok: true }
+})
+
+ipcMain.handle('spike:start', async () => {
+  return startRecording()
 })
 
 ipcMain.handle('spike:stop', async () => {
-  await stopRecording()
-  return { ok: true }
+  return stopRecording()
 })
 
 ipcMain.handle('spike:get-config', async () => ({
-  sessionId: CONFIG.sessionId,
   region: CONFIG.region,
-  webhookUrl: CONFIG.webhookUrl,
+  ondaApiBase: CONFIG.ondaApiBase,
   hasApiKey: Boolean(CONFIG.apiKey),
   hasWebhookSecret: Boolean(CONFIG.webhookSecret),
   platform: process.platform,
@@ -407,4 +690,12 @@ ipcMain.handle('spike:get-config', async () => ({
   recording,
   recordingId: activeRecordingId,
   uploadId: activeUploadId,
+  projectCheckOk,
+  projectCheckError,
+  showId: activeContext?.showId ?? null,
+  showName: activeContext?.showName ?? null,
+  sessionId: activeContext?.sessionId ?? null,
+  sessionLabel: activeContext?.sessionLabel ?? null,
+  lifecycleStatus: activeContext?.lifecycleStatus ?? null,
+  webhookUrl: activeContext?.webhookUrl ?? null,
 }))

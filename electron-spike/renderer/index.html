@@ -6,7 +6,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
     />
-    <title>Onda Recall Adhoc Spike</title>
+    <title>Onda Tech Operator — Step 1</title>
     <style>
       :root {
         color-scheme: light;
@@ -17,6 +17,7 @@
         --danger: #cf222e;
         --ok: #1a7f37;
         --panel: #1a222c;
+        --warn: #d29922;
       }
       * { box-sizing: border-box; }
       body {
@@ -42,11 +43,27 @@
         font-size: 12px;
         line-height: 1.5;
       }
+      .screen { display: none; padding: 16px 20px; }
+      .screen.active { display: block; }
+      label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+      input, select {
+        width: 100%;
+        max-width: 420px;
+        padding: 10px 12px;
+        border-radius: 6px;
+        border: 1px solid #2a3441;
+        background: var(--panel);
+        color: var(--fg);
+        font: inherit;
+        font-size: 13px;
+      }
+      .row { margin-bottom: 14px; }
       .controls {
         display: flex;
         gap: 10px;
-        padding: 16px 20px;
+        padding: 0 0 16px;
         align-items: center;
+        flex-wrap: wrap;
       }
       button {
         border: 0;
@@ -56,6 +73,7 @@
         font-size: 13px;
         cursor: pointer;
         color: #fff;
+        background: var(--accent);
       }
       button:disabled {
         opacity: 0.45;
@@ -63,11 +81,32 @@
       }
       #start { background: var(--ok); }
       #stop { background: var(--danger); }
+      #btn-unlock { background: var(--ok); }
       .pill {
         font-size: 12px;
         color: var(--muted);
       }
       .pill strong { color: var(--fg); }
+      .error {
+        color: #ff7b72;
+        font-size: 12px;
+        margin-top: 8px;
+        min-height: 1.2em;
+      }
+      .lifecycle {
+        font-size: 13px;
+        margin: 8px 0 16px;
+        padding: 10px 12px;
+        background: var(--panel);
+        border: 1px solid #2a3441;
+        border-radius: 6px;
+        max-width: 520px;
+      }
+      .lifecycle .status-live { color: #3fb950; }
+      .lifecycle .status-stopping { color: var(--warn); }
+      .lifecycle .status-ended { color: var(--muted); }
+      .lifecycle .status-ready,
+      .lifecycle .status-preproduction { color: #58a6ff; }
       #log {
         flex: 1;
         margin: 0 20px 20px;
@@ -79,23 +118,71 @@
         font-size: 12px;
         line-height: 1.45;
         white-space: pre-wrap;
+        min-height: 220px;
       }
       .line-error { color: #ff7b72; }
       .line-warn { color: #d29922; }
       .line-info { color: var(--fg); }
       .line-debug { color: var(--muted); }
+      .fatal {
+        margin: 16px 20px;
+        padding: 12px;
+        border: 1px solid var(--danger);
+        border-radius: 8px;
+        color: #ff7b72;
+        display: none;
+      }
+      .fatal.visible { display: block; }
     </style>
   </head>
   <body>
     <header>
-      <h1>Onda · Recall adhoc / in-person spike</h1>
+      <h1>Onda · Tech Operator (Step 1)</h1>
       <div class="meta" id="meta">Loading…</div>
     </header>
-    <div class="controls">
-      <button id="start" type="button">Start recording</button>
-      <button id="stop" type="button" disabled>Stop + retrieve audio</button>
-      <span class="pill" id="state">idle</span>
-    </div>
+
+    <div id="fatal" class="fatal" role="alert"></div>
+
+    <!-- Screen 1: unlock -->
+    <section id="screen-unlock" class="screen active">
+      <div class="row">
+        <label for="credential">Show tech credential</label>
+        <input id="credential" type="password" autocomplete="current-password" placeholder="Shared show password" />
+      </div>
+      <div class="controls">
+        <button id="btn-unlock" type="button">Unlock show</button>
+      </div>
+      <div id="unlock-error" class="error" role="alert"></div>
+    </section>
+
+    <!-- Screen 2: session select -->
+    <section id="screen-sessions" class="screen">
+      <div class="row">
+        <div class="meta" id="show-label">Show</div>
+      </div>
+      <div class="row">
+        <label for="session-select">Session</label>
+        <select id="session-select"></select>
+      </div>
+      <div id="lifecycle-panel" class="lifecycle">Select a session to see its lifecycle status.</div>
+      <div class="controls">
+        <button id="btn-use-session" type="button">Use selected session</button>
+        <button id="btn-back-unlock" type="button" style="background:#424a53">Back</button>
+      </div>
+      <div id="session-error" class="error" role="alert"></div>
+    </section>
+
+    <!-- Screen 3: record -->
+    <section id="screen-record" class="screen">
+      <div id="record-lifecycle" class="lifecycle"></div>
+      <div class="controls">
+        <button id="start" type="button">Start recording</button>
+        <button id="stop" type="button" disabled>Stop + retrieve audio</button>
+        <button id="btn-change-session" type="button" style="background:#424a53">Change session</button>
+        <span class="pill" id="state">idle</span>
+      </div>
+    </section>
+
     <div id="log"></div>
     <script src="./renderer.js"></script>
   </body>

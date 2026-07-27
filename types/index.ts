@@ -83,9 +83,10 @@ export interface ShowDoc {
   defaultLanguages: string[]  // e.g. ['en', 'es', 'pt', 'fr']
   portalPublished: boolean
   /**
-   * Shared Tech Operator Panel password for this show (v1).
+   * Shared Tech Operator / Electron unlock password for this show (v1).
    * Auth email is derived as tech+{portalSlug}@onda.tech — see lib/tech/credentials.ts.
    * Prefer setting via Admin UI so the matching Auth user is provisioned.
+   * Validated server-side via Admin SDK — never returned to clients after unlock.
    */
   techCredential?: string
   archivedAt?: Timestamp
@@ -101,6 +102,8 @@ export type LifecycleStatus =
   | 'preproduction'
   | 'ready'
   | 'live'
+  /** Operator pressed stop; waiting for Recall upload/complete before `ended`. */
+  | 'stopping'
   | 'ended'
   | 'underReview'
   | 'approved'

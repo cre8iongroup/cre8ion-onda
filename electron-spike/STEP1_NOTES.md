@@ -21,23 +21,24 @@ stopping               --sdk_upload.complete-->  ended
 
 - **Start:** API validates not already `live` / `stopping`, writes Firestore + RTDB.
 - **Stop button:** API sets `lifecycleStatus=stopping` only — never `ended`.
-- **Ended (local spike only today):** Electron forwards a synthetic `sdk_upload.complete`
-  to `/api/webhook/{sessionId}` after Retrieve Recording succeeds (or poll times out).
-  That sets RTDB `feedState=ended` (+ Firestore `ended` for local verification).
+- **Ended — local forwarder (gated):** Electron may forward synthetic `sdk_upload.complete`
+  to `/api/webhook/{sessionId}` only when `ONDA_LOCAL_FORWARDER_ENABLED=true` (default **false**).
+  DEFAULT DECISION — flagged for review; full removal once real Svix is live remains on the table.
+- **Ended — authoritative Svix path:** Recall dashboard → `POST /api/recall/webhook` with
+  Svix signatures (`RECALL_SVIX_SIGNING_SECRET`). Resolves `recordingIndex/{recordingId}` then
+  `markSessionEndedFromRecall`. Live delivery still needs the staging custom domain registered
+  in Recall’s dashboard (not done in this pass).
 
-### NAMED STEP 2 REQUIREMENT — real Svix lifecycle path
+### Local verification (no live domain)
 
-**`ended` state transition is verified locally via the Electron forwarder only.**
-The real **Svix → `/api/recall/webhook`** path does **not** exist yet (no Recall
-dashboard endpoint configured, no Svix signature verification in code) and is
-**required before this works on an actual show.** Do not assume lifecycle
-completion is solved for production traffic.
+```bash
+npx tsx scripts/verify-recall-svix-local.ts
+```
 
-Step 2 must ship, as named work:
-1. Register one workspace Svix endpoint → public `POST /api/recall/webhook`
-2. Verify Svix signatures (not `x-recall-secret`)
-3. Resolve session via `recordingIndex/{recordingId}` (and/or verified metadata)
-4. Confirm `sdk_upload.complete` (not `recording_ended`) flips `ended` without Electron
+Remaining for production traffic (domain-dependent):
+1. Register workspace Svix endpoint → public `POST /api/recall/webhook`
+2. Set Firebase secret `RECALL_SVIX_SIGNING_SECRET` from Recall dashboard
+3. Confirm live `sdk_upload.complete` flips `ended` without Electron forwarder
 
 ## Firebase project hard block (not just `/api/health`)
 
@@ -75,8 +76,9 @@ forwarder (path sessionId). The index only matters once the real Svix path exist
    `sdk_upload.recording_ended` (capture stopped; upload may still run).
 2. **Metadata unreliable in docs:** Svix examples show empty `metadata: {}` — do not
    rely on metadata alone for multi-room; use `recordingIndex`.
-3. **Svix auth:** not implemented (missing, not stubbed). Fine for local forwarder;
-   not fine for real Svix traffic.
+3. **Svix auth:** implemented on `/api/recall/webhook` via official `svix` package +
+   `RECALL_SVIX_SIGNING_SECRET`. Local forwarder still uses `x-recall-secret` on
+   `/api/webhook/[sessionId]` only when `ONDA_LOCAL_FORWARDER_ENABLED=true`.
 
 ## API surface
 

@@ -82,6 +82,11 @@ export interface ShowDoc {
   branding: ShowBranding
   defaultLanguages: string[]  // e.g. ['en', 'es', 'pt', 'fr']
   portalPublished: boolean
+  /**
+   * Shared Tech Operator / Electron unlock password for this show (v1).
+   * Validated server-side via Admin SDK — never returned to clients after unlock.
+   */
+  techCredential?: string
   archivedAt?: Timestamp
   createdAt: Timestamp
   createdBy: string
@@ -95,6 +100,8 @@ export type LifecycleStatus =
   | 'preproduction'
   | 'ready'
   | 'live'
+  /** Operator pressed stop; waiting for Recall upload/complete before `ended`. */
+  | 'stopping'
   | 'ended'
   | 'underReview'
   | 'approved'

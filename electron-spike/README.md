@@ -1,80 +1,55 @@
-# Electron + Recall Desktop SDK — Adhoc / In-Person Spike
+# Electron + Recall Desktop SDK — Tech Operator Step 1
 
-Minimal Electron shell that proves the Onda capture loop:
+Minimal Electron shell for Onda in-person capture with **real** show unlock +
+session lifecycle (no hardcoded `SESSION_ID`).
 
-**mic → Recall Desktop SDK (adhoc) → webhook → RTDB chunks → Retrieve Recording (full audio)**
+Flow: **techCredential unlock → session select → startSession API → Recall SDK →
+per-session webhook → stopSession (stopping) → sdk_upload.complete → ended**
 
-This is a proof-of-concept, not production. No code signing, no Tech Panel UI, no auth.
+See `STEP1_NOTES.md` for lifecycle details and Recall webhook caveats.
 
 ## Requirements
 
-- **macOS Apple Silicon** (primary). Windows is supported by the SDK but not validated in this spike.
+- **macOS Apple Silicon** (primary). Windows supported by SDK but not validated here.
 - Node 20+
 - Recall API key + region
-- Onda webhook reachable locally (`npm run dev`) with:
+- Next.js (`npm run dev`) with:
+  - `NEXT_PUBLIC_FIREBASE_PROJECT_ID=cre8ion-onda` (**hard fail otherwise**)
   - `RECALL_WEBHOOK_SECRET`
-  - Firebase Admin credentials (`GOOGLE_APPLICATION_CREDENTIALS` or ADC)
-  - `NEXT_PUBLIC_FIREBASE_DATABASE_URL`
+  - Firebase Admin credentials
+  - Show documents with `techCredential` + `sessions` subcollection
 
 ## Setup
 
 ```bash
-# 1) Next.js (repo root) — webhook + optional sdk-upload helpers
-cp .env.example .env.local   # or edit existing
-# fill Firebase + GOOGLE_APPLICATION_CREDENTIALS + RECALL_WEBHOOK_SECRET
-# (optional RECALL_API_KEY / RECALL_REGION if using Next helpers)
+# 1) Next.js (repo root)
+cp .env.example .env.local
+# fill Firebase (cre8ion-onda only) + GOOGLE_APPLICATION_CREDENTIALS + RECALL_WEBHOOK_SECRET
 npm run dev
 
-# 2) Electron spike
+# 2) Electron
 cd electron-spike
 cp .env.example .env
-# fill RECALL_API_KEY, RECALL_WEBHOOK_SECRET (same secret as root), SESSION_ID
+# fill RECALL_API_KEY, RECALL_WEBHOOK_SECRET, ONDA_API_BASE
 npm install
 npm start
 ```
 
-## What the buttons do
+## Operator flow
 
-1. **Start recording**
-   - `POST /api/v1/sdk_upload/` with `recallai_streaming` + `desktop_sdk_callback`
-   - `prepareDesktopAudioRecording()` → `windowId`
-   - `startRecording({ windowId, uploadToken })`
-2. **Realtime**
-   - Listens for `realtime-event` / `transcript.data`
-   - Normalizes and `POST`s to `ONDA_WEBHOOK_URL` with `x-recall-secret`
-3. **Stop + retrieve audio**
-   - `stopRecording()`
-   - Polls Retrieve Recording until `audio_mixed` / `audio_mixed_mp3` download URL appears
-   - Saves file under `electron-spike/downloads/`
+1. **Unlock** — enter the show’s `techCredential` (validated via `/api/tech/unlock`)
+2. **Select session** — list shows current `lifecycleStatus` (ready/preproduction ≈ scheduled)
+3. **Start** — calls `/api/tech/sessions/start` (rejects if already live) then Recall SDK
+4. **Speak** — transcripts POST to `/api/webhook/{sessionId}` → RTDB chunks
+5. **Stop** — `/api/tech/sessions/stop` → `stopping`; SDK stop + retrieve audio; then
+   `sdk_upload.complete` flips session to `ended` (not on button click alone)
 
-## Offline checks (no Mac / no mic)
+## Offline checks
 
 ```bash
 cd electron-spike && npm run verify-normalize
-
-# With Next.dev + secrets:
-RECALL_WEBHOOK_SECRET=... npx tsx scripts/verify-recall-webhook-shapes.ts
 ```
 
-## Permissions (macOS)
+## Non-goals (Step 2+)
 
-On first run you should see prompts related to:
-
-1. **Microphone** — Electron `askForMediaAccess` + Recall `requestPermission("microphone")`
-2. **System audio** — Recall `requestPermission("system-audio")` (relevant for speaker mix in adhoc)
-3. **Accessibility** / **Screen Recording** — still requested for parity with Recall meeting-mode guidance; log whether adhoc actually requires them
-
-Adhoc mode captures system mic + speaker mix; it does **not** use `meeting-detected`.
-
-## Windows
-
-The SDK supports Windows and does not need the macOS permission trio. Add a Windows smoke test after Mac validation — not blocked by code structure, but not run in this spike.
-
-## Important: Phase 4 webhook compatibility
-
-Phase 4 expected a **custom** JSON body (`sessionId`, `text`, …). Native Recall realtime events use a nested `transcript.data` envelope. This spike:
-
-- Forwards **normalized** Onda payloads from Electron (works with Phase 4 secret header as-is)
-- Also teaches `/api/recall/webhook` + `recallWebhook` CF to accept the **native** envelope when `?sessionId=` is present
-
-See `SPIKE_REPORT.md` for what was / was not verified in CI/cloud.
+Visual polish, reconnect handling, code signing, multi-session-per-device.

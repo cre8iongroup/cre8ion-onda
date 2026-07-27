@@ -21,6 +21,13 @@
           }
         }
       }
+    },
+    // recordingId → sessionId index for Recall Svix lifecycle webhooks (Admin only)
+    "recordingIndex": {
+      "$recordingId": {
+        ".read": false,
+        ".write": false
+      }
     }
   }
 }

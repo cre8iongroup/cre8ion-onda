@@ -28,6 +28,14 @@ const CONFIG = {
   webhookSecret: process.env.RECALL_WEBHOOK_SECRET || '',
   publicWebhookBase: process.env.ONDA_PUBLIC_WEBHOOK_BASE || '',
   languageCode: process.env.LANGUAGE_CODE || 'en',
+  /**
+   * Synthetic sdk_upload.complete → /api/webhook/[sessionId].
+   * Default OFF unless explicitly "true" / "1". Non-local must leave unset.
+   * DEFAULT DECISION — flagged for review; remove once Svix path is live.
+   */
+  localForwarderEnabled: ['true', '1', 'yes'].includes(
+    String(process.env.ONDA_LOCAL_FORWARDER_ENABLED || '').trim().toLowerCase(),
+  ),
 }
 
 /** @type {{ credential: string, showId: string, showName: string, sessionId: string, sessionLabel: string, lifecycleStatus: string, webhookUrl: string } | null} */
@@ -408,7 +416,22 @@ async function startRecording() {
 }
 
 async function notifyUploadComplete() {
-  if (!activeContext?.sessionId || !CONFIG.webhookSecret) return
+  if (!activeContext?.sessionId) return
+
+  if (!CONFIG.localForwarderEnabled) {
+    sendLog(
+      'info',
+      'Skipping local sdk_upload.complete forwarder (ONDA_LOCAL_FORWARDER_ENABLED is not true). ' +
+        'Expect Recall Svix → /api/recall/webhook to flip ended, or set ONDA_LOCAL_FORWARDER_ENABLED=true for local testing.',
+    )
+    return
+  }
+
+  if (!CONFIG.webhookSecret) {
+    sendLog('warn', 'Local forwarder enabled but RECALL_WEBHOOK_SECRET is empty — cannot forward')
+    return
+  }
+
   try {
     const res = await fetch(activeContext.webhookUrl, {
       method: 'POST',

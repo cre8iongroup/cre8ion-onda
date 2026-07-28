@@ -1,5 +1,11 @@
 # Slice 2B — Audit findings + implementation plan
 
+> **Superseded for planning.** The authoritative Slice 2B plan (RTDB auth answer +
+> corrected `isDraft` / `feedState` model + conflicts) is in
+> [`SLICE_2B_PLAN.md`](./SLICE_2B_PLAN.md).
+>
+> This file remains as the Step 0 concurrency audit / Mac spike record.
+
 **Date:** 2026-07-28  
 **Branch:** `cursor/slice-2b-audio-meter-spike-9d90`  
 **Scope of this pass:** Step 0 concurrency spike + written plan only.  

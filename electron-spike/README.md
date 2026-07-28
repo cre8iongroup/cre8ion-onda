@@ -62,7 +62,8 @@ cd electron-spike && npm run verify-normalize
 
 Isolated harness (does not replace Stage 2A UI):
 
-- Docs: `AUDIO_CONCURRENCY_SPIKE.md`, `SLICE_2B_AUDIT_AND_PLAN.md`
+- **Plan (authoritative):** `SLICE_2B_PLAN.md`
+- Concurrency audit / Mac runbook: `AUDIO_CONCURRENCY_SPIKE.md`, `SLICE_2B_AUDIT_AND_PLAN.md`
 - Open in-app: diagnostics `⌘⇧D` → **Audio concurrency spike**, or `#audio-concurrency-spike`
 
 ## Non-goals (Step 2+)

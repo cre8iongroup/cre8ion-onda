@@ -1,279 +1,274 @@
 # Slice 2B — Implementation plan (final, authoritative)
 
-**Product name:** **Onda Operator** (permanent). Use in all new UI copy, window titles, and comments. Do not introduce “Tech Operator Panel”; update that string wherever a touched file still says it.
+**Product:** **Onda Operator** (permanent name — UI copy, window titles, comments).  
+**Status:** Plan only — no implementation code until this is signed off.  
+**Prior valid work:** Step 0 concurrency spike + public RTDB read confirmation (`AUDIO_CONCURRENCY_SPIKE.md`). Meter DSP guardrails ship regardless of pending Mac overlap results.
 
-**Status:** Plan only — no implementation code in this pass.  
-**Out of scope / do not touch:** Web tech login (`/tech/login`, `tech+{slug}@onda.tech` Auth flow) and the future redesign of that surface. Leave exactly as-is.
+### Scope boundaries
 
-**Prior notes:** Step 0 concurrency spike + RTDB public-read confirmation remain valid (`AUDIO_CONCURRENCY_SPIKE.md`, §1 of earlier plans). Mac hardware overlap still runs separately; meter DSP guardrails ship either way.
+| In | Out |
+| --- | --- |
+| Electron Onda Operator Slice 2B UI + APIs | `/tech/login` — **completely untouched** |
+| Phase 3 Admin: ShowDetail badges, CreateSession, isDraft toggle | Redesign of holdover web tech surface |
+| Delete `lifecycleStatus` everywhere it blocks the new model | Attendee PWA / Output (Phase 5) — gating rules documented only |
+| Minimal `app/tech/*` (non-login) field-swaps so the build compiles | Reviewer/posting pipeline status; migration script |
 
 ---
 
-## 1. State model (confirmed)
+## 1. State model
 
-### Axis A — `isDraft: boolean` (admin-only, reversible)
+### `isDraft: boolean` (admin-only)
 
 | Rule | Detail |
 | --- | --- |
 | Default on create | `true` |
-| `true` | Session **absent** from Onda Operator picker and Attendee PWA |
-| `false` | Visible to tech + attendees; does **not** imply feed progress |
-| Reversible | Admin may flip false→true and true→false at any time (e.g. hide a cancelled session) |
-| Who writes | Admin/Editor only (Firestore rules already restrict tech updates to `feedState`) |
-| Who reads for UX | Admin UI only for control; Operator/Attendee filter it out of lists — they never show a Draft control |
+| `true` | Session does not appear in Onda Operator picker or Attendee PWA |
+| `false` | Visible; does not imply feed progress (`feedState` starts `standby`) |
+| Reversible | Admin may show ↔ hide |
+| **Hide blocked when** | `feedState ∈ { testing, live, stopping }` — show clear reason, e.g. “End the session before hiding it.” Hide allowed only at `standby` or `ended`. |
+| Who writes | Admin/Editor only |
+| Operator / Attendee | Never read/write for controls — lists simply omit drafts |
 
-### Axis B — `feedState` (single machine; all UIs format it)
+### `feedState` (single machine; all UIs format it)
 
 ```
 standby → testing → live → stopping → ended
 ```
 
+One-way. No return from `testing` → `standby`. No reset / stop-test.
+
 | Value | Meaning |
 | --- | --- |
-| `standby` | `isDraft=false`, not capturing |
-| `testing` | Real Recall `startRecording()`; audio/transcript to cloud |
-| `live` | Visibility flip only — **same continuous take**, no Recall restart |
-| `stopping` | End click → leave `live` **immediately** (optimistic + API); short handshake |
-| `ended` | Stop confirmed via existing webhook / upload-complete path |
+| `standby` | Visible (`isDraft=false`), no Recall recording |
+| `testing` | Real `startRecording()`; audio/transcript to cloud. **UI label in Operator: “Sound check”** — enum stays `testing` |
+| `live` | Visibility flip only; same continuous Recall take (only reachable from `testing`) |
+| `stopping` | Immediate on End (optimistic + API); before webhook |
+| `ended` | Webhook / upload-complete confirmation |
 
-No reset / stop-test. Dead air between test and Go Live accepted.
+**Delete entirely:** `lifecycleStatus` / `LifecycleStatus` / feed value `paused`.  
+Do not use “published” in this model (reserved for future Reviewer pipeline). `ended` implies nothing about that pipeline.
 
-**Remove entirely:** `lifecycleStatus` / `LifecycleStatus` / `paused` (as a feed value).  
-**Do not** use the word “published” in this model — reserved for a future Reviewer/posting pipeline (out of scope). `feedState=ended` implies nothing about that pipeline.
-
-### Per-UI labels (format only — never store parallel status fields)
+### Per-UI labels (format only — no parallel stored status)
 
 | Condition | Onda Operator | Attendee PWA | Admin/Editor |
 | --- | --- | --- | --- |
-| `isDraft=true` | not in picker | session doesn’t exist | **Draft** |
+| `isDraft=true` | not in picker | doesn’t exist | **Draft** |
 | `standby` | Standby | “[Title] starts at [Time] in [Room]” + QR/link | **Ready** |
-| `testing` | Testing | **identical to standby** | **Testing** |
+| `testing` | **Sound check** | identical to standby | **Testing** |
 | `live` | Live | live captions | **Live** |
-| `stopping` | Stopping | **identical to live** (no visible change) | **Stopping** (distinct on purpose) |
+| `stopping` | Stopping | **identical to live** (no visible change) | **Stopping** (distinct) |
 | `ended` | Ended | thank-you + closing branding | **Ended** |
 
-### Phase 5 gating (document only — not built here)
+### Phase 5 gating (document — do not build)
 
-Attendee PWA + Output gate on **`feedState` alone** per the table:
+Attendee PWA + Output gate on **`feedState` alone**:
 
-- Captions when `live` **or** `stopping`
-- Info card when `standby` **or** `testing`
-- Never gate on “transcript/audio data exists” (test noise would leak during `testing`)
+- Captions: `live` **or** `stopping`
+- Info card: `standby` **or** `testing`
+- Never gate on data presence (test chunks flow during `testing`)
 
 ---
 
-## 2. Full `lifecycleStatus` removal / migration
+## 2. Button UX (Onda Operator) — below the 2×2 grid
 
-### 2.1 Types (`types/index.ts`)
+Two elements, **not** a toggle. Sound check is **required** before Go Live.
 
-- Delete `LifecycleStatus` type and `SessionDoc.lifecycleStatus`
+### A. Secondary — “Enable sound check”
+
+| `feedState` | UI |
+| --- | --- |
+| `standby` | Secondary button **Enable sound check** — clickable |
+| On click | Real Recall start + API `feedState → testing` |
+| `testing` / after use | Button **replaced** (not disabled) by status chip **“Sound check active”** — no leftover button implying undo |
+| `live` / `stopping` / `ended` | Chip or equivalent non-button status as needed; no re-enable |
+
+### B. Primary — “Go Live” → “End session”
+
+| `feedState` | UI |
+| --- | --- |
+| `standby` | Primary **Go Live** visible but **disabled**; hover tooltip: **“Run sound check first.”** |
+| `testing` | **Go Live** enabled |
+| On Go Live click | API `feedState → live` only — **no** Recall restart |
+| `live` | Same control relabels to **End session** |
+| On End click | Optimistic + API `→ stopping`, then Recall stop; webhook → `ended` |
+| `stopping` / `ended` | End control disabled / completed state |
+
+**Not allowed:** Go Live from `standby` (enforced by disabled + tooltip + server reject if somehow called).
+
+---
+
+## 3. Delete `lifecycleStatus` — conflict inventory
+
+### 3.1 Types — `types/index.ts`
+
+- Remove `LifecycleStatus` and `SessionDoc.lifecycleStatus`
 - Add `isDraft: boolean`
-- Replace `FeedState` with `'standby' | 'testing' | 'live' | 'stopping' | 'ended'` (drop `paused`)
-- Update `RTDBSession.feedState` accordingly
-- Shared label helpers (recommended): one pure function module used by Admin + Electron, e.g. `sessionStatusLabel({ isDraft, feedState }, 'admin' | 'operator')` — Attendee helpers deferred to Phase 5 but same table
+- `FeedState = 'standby' | 'testing' | 'live' | 'stopping' | 'ended'`
+- Shared label helper: `sessionStatusLabel(session, 'operator' | 'admin')` (Attendee deferred to Phase 5)
 
-### 2.2 Server / Electron APIs (`lib/tech/sessionLifecycle.ts` + routes)
+### 3.2 Server — `lib/tech/sessionLifecycle.ts` + API routes
 
-| Function / route | Today | After |
-| --- | --- | --- |
-| `SessionSummary` | includes `lifecycleStatus` | `isDraft` + `feedState` only |
-| `unlockShowByCredential` | returns all sessions | **Filter `isDraft === false`** for Operator |
-| `startSession` | sets lifecycle+feed `live`; rejects on lifecycle | `feedState → testing` (FS + RTDB); reject if feed in `testing\|live\|stopping`; require `isDraft===false`; stop writing lifecycle; fix audit metadata (not “GO_LIVE”) |
-| **New** `goLiveSession` + `POST /api/tech/sessions/go-live` | missing | `testing → live` only; no Recall; credential-gated |
-| `stopSession` | lifecycle `stopping`, feed `paused` | `feedState → stopping` immediately (FS + RTDB); no lifecycle |
-| `markSessionEndedFromRecall` | sets both ended | `feedState → ended` only; drop lifecycle write |
+| Today (conflict) | After |
+| --- | --- |
+| `SessionSummary.lifecycleStatus` | `isDraft` + `feedState` |
+| Unlock returns all sessions | Filter **`isDraft === false`** |
+| `startSession` sets lifecycle+feed `live`; audit `SESSION_FEED_GO_LIVE` | **Sound check start:** `feedState → testing`; require `isDraft===false` and current `standby`; reject if already `testing\|live\|stopping`; new/repurposed audit (not Go Live) |
+| No go-live API | **`POST /api/tech/sessions/go-live`:** only `testing → live` |
+| `stopSession` → lifecycle `stopping`, feed `paused` | `feedState → stopping` (FS + RTDB); drop lifecycle / `paused` |
+| `markSessionEndedFromRecall` sets both ended | `feedState → ended` only |
+| Rejects on `underReview\|approved\|published` lifecycle | Drop those checks (field gone); gate on `feedState` + `isDraft` only |
 
-Electron `main.js`: track/send `feedState` (not lifecycle); Start test / Go Live / End map to the three APIs; optimistic UI → Stopping on End before webhook.
-
-### 2.3 Cloud Functions
+### 3.3 Cloud Functions
 
 | File | Change |
 | --- | --- |
-| `functions/src/onSessionEnd.ts` | On feed `ended`: set Firestore `feedState: 'ended'` only; **remove** `lifecycleStatus: 'ended'`. Keep chunk migrate + RTDB node delete behavior (deletion after `ended` is fine — `stopping` still has chunks). |
-| `functions/src/summarize.ts` | Today advances `lifecycleStatus → underReview`. **Remove that write.** Leave an explicit TODO that the future Reviewer/posting status field owns this; do not invent a replacement enum in this slice. |
+| `onSessionEnd.ts` | Write `feedState: 'ended'` only; remove lifecycle write |
+| `summarize.ts` | Remove `lifecycleStatus: 'underReview'` write; TODO for future Reviewer status field — do not invent replacement enum here |
 
-### 2.4 Scripts / verification
+### 3.4 Indexes — `firestore.indexes.json`
 
-- `scripts/verify-recall-audio-store-local.ts` — stop asserting `lifecycleStatus`; expect `feedState` `stopping`→`ended` (not `paused`)
-- Any other script/doc referencing lifecycle — update when touched
+- Remove `lifecycleStatus` + `scheduledStart` composite
+- Keep/add `feedState` + `scheduledStart`; add `isDraft` + `scheduledStart` if Admin queries need it
 
-### 2.5 Firestore indexes (`firestore.indexes.json`)
+### 3.5 Scripts
 
-- **Remove** composite index on `lifecycleStatus` + `scheduledStart`
-- Keep / add indexes as needed for Admin queries: e.g. `isDraft` + `scheduledStart`, existing `feedState` + `scheduledStart`
-- Deploy index changes with the slice (or before ship)
+- `scripts/verify-recall-audio-store-local.ts` — assert new feed values (`stopping` not `paused`); drop lifecycle asserts
 
-### 2.6 Firestore rules
+### 3.6 Data — **no migration script**
 
-- Tech may still update only `feedState` (unchanged intent)
-- Ensure admin/editor can update `isDraft` (already covered by full session update for admin/editor)
-- No rule should reference `lifecycleStatus`
-
-### 2.7 Existing Firestore documents (migration)
-
-One-time backfill (script or Admin-assisted), **required** before relying on Operator filters:
-
-| Legacy `lifecycleStatus` | Proposed `isDraft` | Proposed `feedState` |
-| --- | --- | --- |
-| `preproduction` | `true` | `standby` |
-| `ready` | `false` | `standby` |
-| `live` | `false` | Prefer existing `feedState` if `live`/`paused`; else `live` (manual check if feed was `standby` while lifecycle live — data oddity) |
-| `stopping` | `false` | `stopping` (map legacy feed `paused` → `stopping`) |
-| `ended` / `underReview` / `approved` / `published` | `false` | `ended` |
-| missing field | `true` | `standby` |
-
-Then **delete** `lifecycleStatus` from documents (or leave orphan field unread — prefer delete in same script for cleanliness).
-
-**Risk:** Mis-mapped live rooms during migration. Run against staging first; for any session with `lifecycleStatus=live`, confirm with ops before auto-map.
+No real production data. Delete/recreate the few ALPFA test session docs with `isDraft` + `feedState` manually. Do not map old `lifecycleStatus` forward.
 
 ---
 
-## 3. Phase 3 Admin Panel — in-scope touch list
+## 4. Phase 3 Admin Panel (in scope)
 
-These are **real Slice 2B work**, not a fast-follow.
+### 4.1 `ShowDetail.tsx`
 
-### 3.1 `app/admin/shows/[showId]/ShowDetail.tsx`
+- Replace dual badges (`lifecycleStatus` + muted `feedState`) with **one** Admin label: Draft / Ready / Testing / Live / Stopping / Ended
+- Style Stopping distinctly (operational alarm if stuck)
 
-**Today:** Dual badges — primary `lifecycleStatus` via `statusBadgeClass()`, muted raw `feedState`.
+### 4.2 `CreateSessionModal.tsx`
 
-**Required:**
+- Write `isDraft: true`, `feedState: 'standby'`
+- Remove `preproduction` / any `lifecycleStatus`
 
-- Replace with **one** admin label from the table (`Draft` / `Ready` / `Testing` / `Live` / `Stopping` / `Ended`)
-- Badge styling keyed off `isDraft` + `feedState` (Stopping distinct/warning; Live = live; Draft muted; Ready info; etc.)
-- Delete `statusBadgeClass(lifecycleStatus)`
+### 4.3 Make visible / Hide control
 
-### 3.2 `app/admin/shows/[showId]/CreateSessionModal.tsx`
+- Reversible `isDraft` toggle on session row/detail
+- **Block** hide when `feedState ∈ { testing, live, stopping }` with explicit message (“End the session before hiding it.”)
+- Allow hide at `standby` or `ended`; allow make-visible anytime `isDraft===true`
 
-**Today:** `lifecycleStatus: 'preproduction', feedState: 'standby'`.
+### 4.4 Firestore rules
 
-**Required:** `isDraft: true`, `feedState: 'standby'`; no lifecycle field.
+- Tech updates remain `feedState`-only
+- Admin/editor full session update covers `isDraft` (already)
+- No references to `lifecycleStatus`
 
-### 3.3 Admin `isDraft` toggle (new control)
+---
 
-- On session row or detail in Show Detail: **Make visible** / **Hide from tech & attendees** (reversible)
-- Writes `isDraft` only (admin/editor)
-- Confirm copy: hiding does not delete; does not reset `feedState`
-- **Open risk:** Hiding (`isDraft=true`) while `feedState` is `testing`/`live`/`stopping` — Operator loses the session mid-capture. Recommend either (a) disable hide while feed ∈ {testing, live, stopping}, or (b) allow with a strong confirm. **Needs your pick before build.**
-
-### 3.4 Other Admin files
+## 5. Holdover `app/tech/*` (non-login)
 
 | File | Action |
 | --- | --- |
-| `CreateShowModal.tsx` | No lifecycle; optional copy tweak “tech operators” → “Onda Operator” only if we touch the field help text |
-| `TechCredentialPanel.tsx` | No lifecycle; leave behavior; rename strings only if touched |
-| `ShowsDashboard.tsx` / layouts / users | No session lifecycle badges today — no change unless a reference appears |
-
-No separate session detail route under Admin today — list-on-show is the surface.
+| `/tech/login` | **Do not touch** |
+| `page.tsx`, `sessions/[sessionId]/page.tsx` | Minimal: stop reading `lifecycleStatus` / `paused`; badge off `feedState` (+ ignore drafts if trivial) — **no redesign** |
+| `GoLiveControl.tsx` | Minimal compile fix only (types will break on `paused` / old transitions). Do **not** rebuild web sound-check UX here — that belongs to Onda Operator / later admin-config surface |
+| Other tech components | Field-swap only if TS requires |
 
 ---
 
-## 4. Onda Operator (Electron) — Slice 2B UI
+## 6. Rest of Slice 2B — Onda Operator UI
 
-### 4.1 Naming
+### 6.1 Naming
 
-- Window title, `index.html` `<title>`, welcome/header, comments: **Onda Operator**
-- Update touched files that still say “Tech Operator” / “Onda Tech Operator”
+Window title, `index.html`, welcome/header, comments: **Onda Operator**. Strip “Tech Operator Panel” / “Onda Tech Operator” in touched Electron files.
 
-### 4.2 Session picker
+### 6.2 Audio input meter
 
-- Header; options from unlock payload (**already `isDraft=false` only**)
-- Labels: session name + operator feed label (Standby/Testing/…)
+- Continuous getUserMedia + AnalyserNode from app-open (`inputMeterTap.js`)
+- DSP guardrails on this tap: `echoCancellation` / noiseSuppression / AGC **false**
+- Simple 0–100 horizontal bar; independent of session + `feedState`
 
-### 4.3 Actions
+### 6.3 Audio output
 
-| Control | Behavior |
-| --- | --- |
-| Start test capture | API → `testing` + Recall `startRecording()` |
-| Go Live | API → `live` only |
-| End session | Optimistic `stopping` + API `stopping` + Recall stop; webhook → `ended` |
+- Default `audiooutput` name via `enumerateDevices` + `devicechange`
+- Play test tone button
+- No passive output level meter
 
-### 4.4 Audio input meter
+### 6.4 Device / network switching
 
-- App-open continuous getUserMedia + AnalyserNode (`inputMeterTap.js`)
-- DSP guardrails: echoCancellation / noiseSuppression / autoGainControl **false**
-- Simple 0–100 bar; independent of session / feedState
+- No in-app pickers
+- Deep-link OS Sound + Network settings via main-process `shell.openExternal`
+- **Target macOS Tahoe (26.x)** — current `x-apple.systempreferences:` URI scheme; no pre-Ventura branching
+- Windows: `ms-settings:sound` / `ms-settings:network` when that laptop is in hand
+- Warn while capturing: Recall binds defaults at start; OS device change can kill capture
 
-### 4.5 Audio output
+### 6.5 Network health
 
-- Default output device name (`enumerateDevices`)
-- Play test tone; no passive output meter
-
-### 4.6 OS settings deep-links
-
-- Sound + Network via main-process `shell.openExternal` (macOS + Windows)
-- No in-app device/Wi‑Fi pickers
-- Warn when capturing: Recall binds defaults at start; OS device changes can kill capture
-
-### 4.7 Network health
-
-- Metric: `lastWebhookRttMs` (+ staleness via `lastWebhookOkAt`) — RTT ms, not throughput
-- **Tunable constants** in one module (e.g. `networkHealthThresholds.js`), not inline magic numbers:
+- Metric: `lastWebhookRttMs` + staleness (`lastWebhookOkAt`)
+- **Single tunable config object** (easy retune without hunting magic numbers), e.g.:
 
 ```text
-GREEN_RTT_MS_MAX = 500
-YELLOW_RTT_MS_MAX = 1500
-STALE_WHILE_CAPTURING_MS = 45_000
+{ greenRttMsMax: 500, yellowRttMsMax: 1500, staleWhileCapturingMs: 45_000 }
 ```
 
-- Green / Yellow / Red per accepted provisional rules; retune on-site later by editing constants
-- Show SSID / “Wired / unknown” beside indicator
+- Green / Yellow / Red per provisional rules; idle (no webhooks yet) uses online/RTDB connectivity, not false red
+- Show network name (SSID or Wired/unknown) beside indicator
 
-### 4.8 Live caption preview
+### 6.6 Live caption preview
 
-- Firebase client SDK → RTDB `liveSessions/{id}/chunks` (public read; **no new auth**)
-- Visible during `testing` and `live` (and while `stopping` if session still selected)
-- Writes stay credential-gated APIs
+- Firebase client SDK + `databaseURL` in renderer
+- Subscribe to `liveSessions/{sessionId}/chunks` (public `.read: true` — **no new auth**)
+- Visible during sound check (`testing`) and `live` (and `stopping` while session selected)
+- Go Live / End **writes** stay on credential-gated APIs — do not loosen RTDB write rules
 
-### 4.9 Layout (centered)
+### 6.7 Layout (centered, per mockup)
 
 ```
-Header: brand “Onda Operator” · show · session picker
-Left ~2/3: 16:9 live caption preview
-Right 2×2: input meter | output + tone | network R/Y/G + name | feed label + session identity
-Below grid: End session
+┌────────────────────────────────────────────────────────────┐
+│ Header: Onda Operator · show · session picker              │
+├──────────────────────────────┬─────────────────────────────┤
+│ Live caption preview (16:9)  │ Input meter 0–100           │
+│ ~2/3 width                   │ Output name + test tone     │
+│                              │ Network R/Y/G + name        │
+│                              │ Status: Sound check / …     │
+├──────────────────────────────┴─────────────────────────────┤
+│ Enable sound check | chip  ·  Go Live / End session          │
+└────────────────────────────────────────────────────────────┘
 ```
 
----
+Controls **below** the grid (not in the 2×2 cells).
 
-## 5. Explicitly not in this slice
+### 6.8 Operator action summary
 
-| Item | Notes |
-| --- | --- |
-| Web `/tech/login` + synthetic Auth UX redesign | Do not touch |
-| Attendee PWA / Output view | Phase 5; gating rules documented above |
-| Reviewer/posting status pipeline | Future; strip `underReview` lifecycle write only |
-| Full redesign of `app/tech/*` session pages | Not the Electron product; see §6 risk |
-
----
-
-## 6. Remaining open risks / decisions
-
-1. **Hide-while-live policy** for `isDraft` toggle (§3.3) — block vs confirm.  
-2. **`app/tech/page.tsx` + `sessions/[sessionId]` + `GoLiveControl`:** Type removal of `lifecycleStatus` / `paused` will break TypeScript there. Per “don’t touch web tech login,” recommend **minimal compile-safe field swaps only** (badges read `isDraft`/`feedState`) **without** redesigning that holdover surface — or temporarily `// @ts-expect-error` if you prefer zero UX edits. Confirm preference.  
-3. **Data migration** of existing prod/staging sessions — who runs it, staging-first sign-off.  
-4. **macOS version** for Sound/Network Settings URL schemes on operator laptops.  
-5. **Mockup CTA placement** — Start test / Go Live exact position vs End-below-grid (mockup not in repo).  
-6. **Mac concurrency paste-back** — non-blocking for plan; still required before calling meter “hardware verified.”  
-7. **Windows** sound/network deep-links + concurrency — open validation gap.
+| UI action | Recall | `feedState` |
+| --- | --- | --- |
+| Enable sound check | `startRecording()` | → `testing` |
+| Go Live | none | → `live` |
+| End session | `stopRecording()` (after/with immediate state write) | → `stopping` then → `ended` |
 
 ---
 
-## 7. Suggested build order (after plan sign-off)
+## 7. Suggested build order (after sign-off)
 
-1. Types + shared label helper; Firestore index update  
-2. Migration script for existing sessions  
-3. `sessionLifecycle` + start / go-live / stop / ended paths + CF updates  
-4. Admin: CreateSession, ShowDetail badges, isDraft toggle  
-5. Electron: rename strings, APIs, meter/output/network/OS links, RTDB preview, layout  
-6. Minimal `app/tech/*` compile fixes if required (§6.2)  
-7. Staging verify: draft hide/show, test→live→stopping→ended, Admin Stopping visibility, webhook ended  
+1. Types + label helper; Firestore index update; manually recreate ALPFA test sessions  
+2. Rewrite start (sound check) / add go-live / rewrite stop / ended; CF updates  
+3. Admin: CreateSession, ShowDetail badge, isDraft toggle with block rule  
+4. Minimal `app/tech/*` compile field-swaps  
+5. Electron: naming, Firebase caption subscribe, meter/output/network/OS links, button UX, layout  
+6. Staging pass: draft hide block while live, sound check → Go Live → End → ended  
 
 ---
 
-## 8. Decision checklist for review meeting
+## 8. Remaining open risks / conflicts not fully closed
 
-- [ ] Approve hide-while-capturing policy for `isDraft`  
-- [ ] Approve minimal vs zero edits on holdover `app/tech/*` (not login)  
-- [ ] Approve migration mapping table (§2.7)  
-- [ ] Confirm operator laptop macOS major version for deep-links  
-- [ ] Confirm Start test / Go Live placement from approved mockup  
+1. **`GoLiveControl` on web tech** will remain semantically wrong (standby/end toggles) after a minimal type fix — acceptable per “no redesign,” but Admin/ops should not use it for real shows until that surface is replaced.  
+2. **Optimistic Stopping vs API failure:** UI shows Stopping immediately; if `stopSession` API fails, need a clear error + possible rollback of optimistic state — specify in implementation.  
+3. **Recall already recording + double sound check:** Server must reject start unless `standby`; Electron must not show Enable sound check after chip replace.  
+4. **Firebase client env in Electron:** Renderer needs `NEXT_PUBLIC_FIREBASE_*` (or mirrored Electron env) for RTDB — today Electron only has HTTP to Next; wire carefully without shipping Admin secrets.  
+5. **`onSessionEnd` deletes RTDB node on `ended`:** Fine for stopping buffer; ensure Operator doesn’t assume chunks persist after ended.  
+6. **Windows** deep-links + concurrency still an open validation gap (non-blocking).  
+7. **Mac concurrency paste-back** still required before “hardware verified” on the meter (non-blocking for coding after plan sign-off).  
+8. **Audit log enum** `SESSION_FEED_GO_LIVE` today fires on start — rename/split so sound check ≠ Go Live in audit history.
+
+No further product vocabulary decisions outstanding for this slice beyond sign-off of this document.

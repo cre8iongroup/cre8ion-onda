@@ -1,9 +1,9 @@
 # Slice 2B — Audit findings + implementation plan
 
-> **Superseded for planning.** The authoritative Slice 2B plan is
-> [`SLICE_2B_PLAN.md`](./SLICE_2B_PLAN.md) (Onda Operator rename, full
-> `lifecycleStatus` removal, `isDraft` + `feedState`, Admin Phase 3 migration,
-> RTDB auth answer, and Slice 2B UI scope).
+> **Superseded for planning.** Authoritative plan:
+> [`SLICE_2B_PLAN.md`](./SLICE_2B_PLAN.md) — Onda Operator, full `lifecycleStatus`
+> removal, `isDraft`/`feedState`, sound-check button UX, Admin Phase 3, no
+> migration script, macOS Tahoe deep-links.
 >
 > This file remains as the Step 0 concurrency audit / Mac spike record.
 

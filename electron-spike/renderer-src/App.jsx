@@ -146,6 +146,8 @@ export default function App() {
   const [unlockError, setUnlockError] = useState('')
 
   const [show, setShow] = useState(null)
+  const [rooms, setRooms] = useState([])
+  const [selectedRoomId, setSelectedRoomId] = useState(null)
   const [sessions, setSessions] = useState([])
   const [selectedSessionId, setSelectedSessionId] = useState(null)
   const [sessionError, setSessionError] = useState('')
@@ -157,7 +159,6 @@ export default function App() {
   const [endError, setEndError] = useState('')
 
   const [meterLevel, setMeterLevel] = useState(0)
-  const [outputLabel, setOutputLabel] = useState('—')
   const [networkName, setNetworkName] = useState('—')
   const [lastWebhookRttMs, setLastWebhookRttMs] = useState(null)
   const [lastWebhookOkAt, setLastWebhookOkAt] = useState(null)
@@ -188,22 +189,6 @@ export default function App() {
       tap.stop()
     }
   }, [appendLog])
-
-  useEffect(() => {
-    async function refreshOutput() {
-      try {
-        const all = await navigator.mediaDevices.enumerateDevices()
-        const outs = all.filter((d) => d.kind === 'audiooutput')
-        const def = outs.find((d) => d.deviceId === 'default') || outs[0]
-        setOutputLabel(def?.label || 'Default output')
-      } catch {
-        setOutputLabel('Output unavailable')
-      }
-    }
-    refreshOutput()
-    navigator.mediaDevices?.addEventListener?.('devicechange', refreshOutput)
-    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', refreshOutput)
-  }, [])
 
   useEffect(() => {
     function onOnline() {
@@ -299,6 +284,18 @@ export default function App() {
     [sessions, selectedSessionId],
   )
 
+  const selectedRoom = useMemo(
+    () => rooms.find((r) => r.id === selectedRoomId) || null,
+    [rooms, selectedRoomId],
+  )
+
+  const roomSessions = useMemo(() => {
+    if (!selectedRoomId) return []
+    return sessions
+      .filter((s) => s.roomId === selectedRoomId)
+      .sort((a, b) => (a.scheduledStart || '').localeCompare(b.scheduledStart || ''))
+  }, [sessions, selectedRoomId])
+
   const canControl = projectCheckOk && sdkReady && Boolean(selectedSessionId)
   const capturing =
     feedState === 'testing' || feedState === 'live' || feedState === 'stopping' || recording
@@ -308,6 +305,24 @@ export default function App() {
     online,
     capturing,
   })
+
+  // After a session ends, return to this room's session list (home base).
+  useEffect(() => {
+    if (screen !== 'record' || feedState !== 'ended') return undefined
+    let cancelled = false
+    ;(async () => {
+      await getOndaSpike().clearSession()
+      if (cancelled) return
+      setSelectedSessionId(null)
+      setSessionLabel(null)
+      setWebhookUrl(null)
+      setEndError('')
+      setScreen('sessions')
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [screen, feedState])
 
   async function handleUnlock() {
     setUnlockError('')
@@ -323,37 +338,47 @@ export default function App() {
         setUnlockError(result.error || 'Invalid credential')
         return
       }
-      const nextSessions = result.sessions || []
       setCredential(result.credential || credentialInput)
       setShow(result.show)
-      setSessions(nextSessions)
-      setSelectedSessionId(nextSessions[0]?.id || null)
-      setScreen('sessions')
+      setRooms(Array.isArray(result.rooms) ? result.rooms : [])
+      setSessions(result.sessions || [])
+      setSelectedRoomId(null)
+      setSelectedSessionId(null)
+      setScreen('rooms')
     } finally {
       setUnlockBusy(false)
     }
   }
 
-  async function handleUseSession() {
+  function handleSelectRoom(roomId) {
+    setSessionError('')
+    setSelectedRoomId(roomId)
+    setSelectedSessionId(null)
+    setScreen('sessions')
+  }
+
+  async function handleUseSession(session) {
     setSessionError('')
     setEndError('')
-    if (!currentSession || !show || !credential) {
+    const target = session || currentSession
+    if (!target || !show || !credential) {
       setSessionError('Select a session first.')
       return
     }
+    setSelectedSessionId(target.id)
     const spike = getOndaSpike()
     const result = await spike.selectSession({
       credential,
       showId: show.id,
       showName: show.name,
-      session: currentSession,
+      session: target,
     })
     if (!result.ok) {
       setSessionError(result.error || 'Could not select session')
       return
     }
-    setFeedState(currentSession.feedState || 'standby')
-    setSessionLabel(currentSession.friendlyName || currentSession.title)
+    setFeedState(target.feedState || 'standby')
+    setSessionLabel(target.friendlyName || target.title)
     setWebhookUrl(result.context?.webhookUrl || null)
     setScreen('record')
   }
@@ -361,17 +386,42 @@ export default function App() {
   async function handleBackUnlock() {
     setCredential(null)
     setShow(null)
+    setRooms([])
     setSessions([])
+    setSelectedRoomId(null)
     setSelectedSessionId(null)
     await getOndaSpike().clearSession()
     setScreen('unlock')
   }
 
-  async function handleChangeSession() {
+  /** Stay in the current room — back to session list (not unlock, not room pick). */
+  async function handleBackToSessionList() {
     setEndError('')
+    setSessionError('')
     await getOndaSpike().clearSession()
-    setSelectedSessionId(sessions[0]?.id || null)
+    setSelectedSessionId(null)
+    setSessionLabel(null)
+    setWebhookUrl(null)
+    setFeedState(null)
     setScreen('sessions')
+  }
+
+  /** Reset room only — credential/show stay valid. Blocked while capturing. */
+  async function handleChangeRoom() {
+    if (capturing && feedState !== 'ended') {
+      setSessionError('End the session before changing rooms.')
+      setEndError('End the session before changing rooms.')
+      return
+    }
+    setEndError('')
+    setSessionError('')
+    await getOndaSpike().clearSession()
+    setSelectedRoomId(null)
+    setSelectedSessionId(null)
+    setSessionLabel(null)
+    setWebhookUrl(null)
+    setFeedState(null)
+    setScreen('rooms')
   }
 
   async function handleSoundCheck() {
@@ -443,24 +493,24 @@ export default function App() {
     }
   }
 
-  async function playTestTone() {
+  function formatSessionWhen(iso) {
+    if (!iso) return 'Schedule TBD'
     try {
-      const AC = window.AudioContext || window.webkitAudioContext
-      const ctx = new AC()
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.frequency.value = 880
-      gain.gain.value = 0.08
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start()
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35)
-      osc.stop(ctx.currentTime + 0.4)
-      window.setTimeout(() => ctx.close(), 500)
-    } catch (err) {
-      appendLog({ level: 'warn', message: `Test tone failed: ${err?.message}` })
+      return new Date(iso).toLocaleString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    } catch {
+      return iso
     }
   }
+
+  const recordTitle =
+    sessionLabel || currentSession?.friendlyName || currentSession?.title || 'Session'
+  const recordRoomName = selectedRoom?.name || currentSession?.roomName || '—'
 
   return (
     <div className="op-shell">
@@ -474,41 +524,6 @@ export default function App() {
           </div>
           {show ? (
             <div className="op-header-show text-sm text-muted truncate">{show.name}</div>
-          ) : null}
-          {screen === 'record' ? (
-            <div className="op-header-session">
-              <label htmlFor="header-session" className="sr-only">
-                Session
-              </label>
-              <select
-                id="header-session"
-                className="input input-sm"
-                value={selectedSessionId || ''}
-                onChange={async (e) => {
-                  const id = e.target.value
-                  setSelectedSessionId(id)
-                  const s = sessions.find((x) => x.id === id)
-                  if (s && show && credential) {
-                    await getOndaSpike().selectSession({
-                      credential,
-                      showId: show.id,
-                      showName: show.name,
-                      session: s,
-                    })
-                    setFeedState(s.feedState || 'standby')
-                    setSessionLabel(s.friendlyName || s.title)
-                    setEndError('')
-                  }
-                }}
-                disabled={capturing && feedState !== 'ended'}
-              >
-                {sessions.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.friendlyName || s.title} — {operatorFeedLabel(s.feedState)}
-                  </option>
-                ))}
-              </select>
-            </div>
           ) : null}
         </header>
       ) : null}
@@ -566,47 +581,49 @@ export default function App() {
         </section>
       ) : null}
 
-      {screen === 'sessions' ? (
-        <section id="screen-sessions" className="op-screen op-screen-main">
+      {screen === 'rooms' ? (
+        <section id="screen-rooms" className="op-screen op-screen-main">
           <div className="op-row">
             <p className="op-section-kicker text-sm text-muted">
               {show
                 ? `${show.name}${show.clientName ? ` · ${show.clientName}` : ''}`
                 : 'Show'}
             </p>
-            <h2 className="op-section-title">Select a session</h2>
+            <h2 className="op-section-title">Select a room</h2>
+            <p className="text-sm text-muted">
+              Rooms are managed in Admin. Pick the room you are working.
+            </p>
           </div>
-          <div className="op-row">
-            <label htmlFor="session-select" className="label">
-              Session
-            </label>
-            <select
-              id="session-select"
-              className="input"
-              value={selectedSessionId || ''}
-              onChange={(e) => setSelectedSessionId(e.target.value)}
-            >
-              {sessions.length === 0 ? (
-                <option value="">No visible sessions (all drafts?)</option>
-              ) : (
-                sessions.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {`${s.friendlyName || s.title} — ${operatorFeedLabel(s.feedState)}`}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-          <div className="op-controls op-controls-primary">
-            <button
-              id="btn-use-session"
-              type="button"
-              className="btn btn-primary"
-              disabled={!currentSession}
-              onClick={handleUseSession}
-            >
-              Use selected session
-            </button>
+          {rooms.length === 0 ? (
+            <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+              <h3 style={{ marginBottom: 8 }}>No rooms configured</h3>
+              <p className="text-sm text-muted">
+                Ask an admin to add rooms for this show before operating.
+              </p>
+            </div>
+          ) : (
+            <div className="op-room-list" role="list">
+              {rooms.map((room) => {
+                const count = sessions.filter((s) => s.roomId === room.id).length
+                return (
+                  <button
+                    key={room.id}
+                    type="button"
+                    role="listitem"
+                    id={`btn-room-${room.id}`}
+                    className="op-room-card card card-interactive"
+                    onClick={() => handleSelectRoom(room.id)}
+                  >
+                    <span className="op-room-card-name">{room.name}</span>
+                    <span className="text-sm text-muted">
+                      {count === 1 ? '1 session' : `${count} sessions`}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          <div className="op-controls" style={{ marginTop: 24 }}>
             <button
               id="btn-back-unlock"
               type="button"
@@ -616,6 +633,57 @@ export default function App() {
               Back
             </button>
           </div>
+        </section>
+      ) : null}
+
+      {screen === 'sessions' ? (
+        <section id="screen-sessions" className="op-screen op-screen-main">
+          <div className="op-row op-sessions-header">
+            <div>
+              <p className="op-section-kicker text-sm text-muted">
+                {selectedRoom?.name || 'Room'}
+                {show?.name ? ` · ${show.name}` : ''}
+              </p>
+              <h2 className="op-section-title">Sessions</h2>
+            </div>
+            <button
+              id="btn-change-room"
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleChangeRoom}
+            >
+              Change room
+            </button>
+          </div>
+          {roomSessions.length === 0 ? (
+            <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+              <h3 style={{ marginBottom: 8 }}>No visible sessions in this room</h3>
+              <p className="text-sm text-muted">
+                Sessions must be assigned to this room and made visible in Admin.
+              </p>
+            </div>
+          ) : (
+            <div className="op-session-list" role="list">
+              {roomSessions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  role="listitem"
+                  id={`btn-session-${s.id}`}
+                  className="op-session-row card card-interactive"
+                  onClick={() => handleUseSession(s)}
+                >
+                  <div className="op-session-row-main">
+                    <span className="op-session-row-title">{s.friendlyName || s.title}</span>
+                    <span className="text-sm text-muted">{formatSessionWhen(s.scheduledStart)}</span>
+                  </div>
+                  <span className={feedBadgeClass(s.feedState)}>
+                    {operatorFeedLabel(s.feedState)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           <div id="session-error" className="op-error" role="alert">
             {sessionError}
           </div>
@@ -624,6 +692,70 @@ export default function App() {
 
       {screen === 'record' ? (
         <section id="screen-record" className="op-screen op-screen-operator">
+          <div className="op-record-header">
+            <div className="op-record-header-text">
+              <h2 className="op-record-title">{recordTitle}</h2>
+              <p className="op-record-room text-sm text-muted">{recordRoomName}</p>
+            </div>
+            <div className="op-record-header-actions">
+              {feedState === 'standby' || !feedState ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={actionBusy || !canControl}
+                  onClick={handleSoundCheck}
+                >
+                  Enable sound check
+                </button>
+              ) : feedState === 'testing' || feedState === 'live' || feedState === 'stopping' ? (
+                <span className="badge badge-info">Sound check active</span>
+              ) : null}
+
+              {feedState === 'live' || feedState === 'stopping' ? (
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={actionBusy || feedState === 'stopping'}
+                  onClick={handleEndSession}
+                >
+                  {feedState === 'stopping' ? 'Stopping…' : 'End session'}
+                </button>
+              ) : feedState === 'ended' ? (
+                <span className="badge badge-muted">Ended</span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={actionBusy || feedState !== 'testing'}
+                  title={feedState === 'standby' || !feedState ? 'Run sound check first.' : undefined}
+                  onClick={handleGoLive}
+                >
+                  Go Live
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={capturing && feedState !== 'ended'}
+                title={
+                  capturing && feedState !== 'ended'
+                    ? 'End the session before leaving'
+                    : 'Back to session list'
+                }
+                onClick={handleBackToSessionList}
+              >
+                Sessions
+              </button>
+            </div>
+          </div>
+
+          {endError ? (
+            <div className="alert alert-error" role="alert" style={{ marginBottom: 16 }}>
+              {endError}
+            </div>
+          ) : null}
+
           <div className="op-operator-layout">
             <div className="op-caption-panel" aria-label="Live caption preview">
               <div className="op-caption-frame">
@@ -648,16 +780,6 @@ export default function App() {
               </div>
 
               <div className="op-grid-cell">
-                <div className="op-grid-label">Output</div>
-                <div className="op-grid-value truncate" title={outputLabel}>
-                  {outputLabel}
-                </div>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={playTestTone}>
-                  Play test tone
-                </button>
-              </div>
-
-              <div className="op-grid-cell">
                 <div className="op-grid-label">Network</div>
                 <div className="op-net-row">
                   <span className={`op-net-dot op-net-${netColor}`} aria-label={netColor} />
@@ -677,77 +799,14 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="op-grid-cell">
+              <div className="op-grid-cell op-grid-cell-status">
                 <div className="op-grid-label">Status</div>
                 <span className={feedBadgeClass(feedState)}>
                   {feedState === 'live' ? <span className="live-dot" aria-hidden="true" /> : null}
                   {operatorFeedLabel(feedState)}
                 </span>
-                <div className="op-grid-value" style={{ marginTop: 8 }}>
-                  {sessionLabel || '—'}
-                </div>
-                <div className="text-sm text-muted">{show?.name || ''}</div>
               </div>
             </div>
-          </div>
-
-          {endError ? (
-            <div className="alert alert-error" role="alert" style={{ marginTop: 16 }}>
-              {endError}
-            </div>
-          ) : null}
-
-          <div className="op-controls op-controls-primary op-controls-below">
-            {feedState === 'standby' || !feedState ? (
-              <button
-                type="button"
-                className="btn btn-secondary btn-lg"
-                disabled={actionBusy || !canControl}
-                onClick={handleSoundCheck}
-              >
-                Enable sound check
-              </button>
-            ) : feedState === 'testing' || feedState === 'live' || feedState === 'stopping' ? (
-              <span className="badge badge-info">Sound check active</span>
-            ) : null}
-
-            {feedState === 'live' || feedState === 'stopping' ? (
-              <button
-                type="button"
-                className="btn btn-danger btn-lg"
-                disabled={actionBusy || feedState === 'stopping'}
-                onClick={handleEndSession}
-              >
-                {feedState === 'stopping' ? 'Stopping…' : 'End session'}
-              </button>
-            ) : feedState === 'ended' ? (
-              <span className="badge badge-muted">Ended</span>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-primary btn-lg"
-                disabled={actionBusy || feedState !== 'testing'}
-                title={
-                  feedState === 'standby' || !feedState
-                    ? 'Run sound check first.'
-                    : feedState === 'testing'
-                      ? 'Go live for attendees'
-                      : undefined
-                }
-                onClick={handleGoLive}
-              >
-                Go Live
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={capturing && feedState !== 'ended' && feedState !== 'stopping'}
-              onClick={handleChangeSession}
-            >
-              Change session
-            </button>
           </div>
         </section>
       ) : null}

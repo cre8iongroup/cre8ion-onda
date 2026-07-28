@@ -1,8 +1,8 @@
 # Slice 2B — Implementation plan (final, authoritative)
 
 **Product:** **Onda Operator** (permanent name — UI copy, window titles, comments).  
-**Status:** Plan only — no implementation code until this is signed off.  
-**Prior valid work:** Step 0 concurrency spike + public RTDB read confirmation (`AUDIO_CONCURRENCY_SPIKE.md`). Meter DSP guardrails ship regardless of pending Mac overlap results.
+**Status:** Implementation in progress on this branch (plan signed off + addenda).  
+**Addenda:** GoLiveControl outdated banner; ended caption empty-state; optimistic Stopping rollback to `live` with persistent error; Firebase client env documented in PR / `.env.example`.
 
 ### Scope boundaries
 

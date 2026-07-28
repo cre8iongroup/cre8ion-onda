@@ -1,41 +1,40 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  limitToLast,
+  onChildAdded,
+  onValue,
+  orderByChild,
+  query,
+  ref,
+} from 'firebase/database'
 import { getOndaSpike } from './ondaSpike.js'
+import { createInputMeterTap } from './lib/inputMeterTap.js'
+import { getFirebaseConfigStatus, getRendererDatabase } from './lib/firebaseClient.js'
+import { networkHealthColor } from './lib/networkHealth.js'
 
-/**
- * Visual badge class for lifecycleStatus (existing .badge-* tokens).
- * live → green success + pulse (operator "in progress"), not Admin feed-red.
- */
-function lifecycleBadgeClass(status) {
-  const s = String(status || '').toLowerCase()
-  if (s === 'live') return 'badge badge-success badge-pulse'
-  if (s === 'stopping') return 'badge badge-standby'
-  if (s === 'ended') return 'badge badge-muted'
-  if (s === 'ready' || s === 'preproduction') return 'badge badge-info'
-  if (s === 'underreview' || s === 'approved' || s === 'published') return 'badge badge-muted'
-  return 'badge badge-muted'
-}
-
-/** Short scannable label — not a sentence. */
-function lifecycleBadgeLabel(status) {
-  switch (status) {
-    case 'preproduction':
-    case 'ready':
-      return 'Scheduled'
+function operatorFeedLabel(feedState) {
+  switch (feedState) {
+    case 'standby':
+      return 'Standby'
+    case 'testing':
+      return 'Sound check'
     case 'live':
       return 'Live'
     case 'stopping':
       return 'Stopping'
     case 'ended':
       return 'Ended'
-    case 'underReview':
-      return 'Under review'
-    case 'approved':
-      return 'Approved'
-    case 'published':
-      return 'Published'
     default:
-      return status || 'Unknown'
+      return feedState || '—'
   }
+}
+
+function feedBadgeClass(feedState) {
+  if (feedState === 'live') return 'badge badge-live badge-pulse'
+  if (feedState === 'testing') return 'badge badge-info'
+  if (feedState === 'stopping') return 'badge badge-standby'
+  if (feedState === 'ended') return 'badge badge-muted'
+  return 'badge badge-muted'
 }
 
 function formatMeta(cfg) {
@@ -47,38 +46,87 @@ function formatMeta(cfg) {
     `apiKey=${cfg.hasApiKey ? 'yes' : 'NO'}`,
     `webhookSecret=${cfg.hasWebhookSecret ? 'yes' : 'NO'}`,
     cfg.sessionId ? `session=${cfg.sessionId}` : null,
-    cfg.lifecycleStatus ? `lifecycle=${cfg.lifecycleStatus}` : null,
+    cfg.feedState ? `feed=${cfg.feedState}` : null,
     cfg.recordingId ? `recordingId=${cfg.recordingId}` : null,
   ]
     .filter(Boolean)
     .join(' · ')
 }
 
-function captureBadge({ recording, projectCheckOk, sdkReady }) {
-  if (recording) {
-    return { className: 'badge badge-success badge-pulse', label: 'Recording' }
-  }
-  if (!projectCheckOk) {
-    return { className: 'badge badge-standby', label: 'Blocked' }
-  }
-  if (sdkReady) {
-    return { className: 'badge badge-info', label: 'Ready' }
-  }
-  return { className: 'badge badge-muted', label: 'SDK not ready' }
-}
+function CaptionPreview({ sessionId, feedState }) {
+  const [chunks, setChunks] = useState([])
+  const [error, setError] = useState('')
+  const [ready, setReady] = useState(false)
 
-function LifecycleBadge({ status }) {
+  useEffect(() => {
+    setChunks([])
+    setError('')
+    setReady(false)
+    if (!sessionId) return undefined
+    if (feedState === 'ended') return undefined
+
+    let unsubAdded = () => {}
+    let unsubValue = () => {}
+    try {
+      const db = getRendererDatabase()
+      const chunksRef = query(
+        ref(db, `liveSessions/${sessionId}/chunks`),
+        orderByChild('timestamp'),
+        limitToLast(80),
+      )
+      const seen = new Map()
+      unsubAdded = onChildAdded(chunksRef, (snap) => {
+        const val = snap.val()
+        if (!val?.text) return
+        seen.set(snap.key, { id: snap.key, ...val })
+        setChunks(
+          Array.from(seen.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)),
+        )
+        setReady(true)
+      })
+      unsubValue = onValue(chunksRef, () => setReady(true))
+    } catch (err) {
+      setError(err?.message || String(err))
+    }
+    return () => {
+      unsubAdded()
+      unsubValue()
+    }
+  }, [sessionId, feedState])
+
+  if (feedState === 'ended') {
+    return (
+      <div className="op-caption-empty">Session ended — no live preview available</div>
+    )
+  }
+  if (!sessionId) {
+    return <div className="op-caption-empty">Select a session to preview live captions.</div>
+  }
+  if (error) {
+    return <div className="op-caption-empty op-error">{error}</div>
+  }
+  if (!ready || chunks.length === 0) {
+    return (
+      <div className="op-caption-empty">
+        Waiting for live captions…
+        {feedState === 'standby' ? ' Enable sound check to start capture.' : ''}
+      </div>
+    )
+  }
   return (
-    <span className={lifecycleBadgeClass(status)}>
-      {status === 'live' ? <span className="live-dot" aria-hidden="true" /> : null}
-      {lifecycleBadgeLabel(status)}
-    </span>
+    <div className="op-caption-scroll" aria-live="polite">
+      {chunks.map((c) => (
+        <div key={c.id} className="op-caption-line">
+          {c.speakerLabel ? <span className="op-caption-speaker">{c.speakerLabel}</span> : null}
+          <span>{c.text}</span>
+        </div>
+      ))}
+    </div>
   )
 }
 
 /**
- * Stage 2A — UI restructuring only.
- * IPC surface unchanged: same window.ondaSpike calls as Stage 1.
+ * Onda Operator — Slice 2B record surface.
  */
 export default function App() {
   const [screen, setScreen] = useState('unlock')
@@ -102,11 +150,20 @@ export default function App() {
   const [selectedSessionId, setSelectedSessionId] = useState(null)
   const [sessionError, setSessionError] = useState('')
 
-  const [lifecycleStatus, setLifecycleStatus] = useState(null)
+  const [feedState, setFeedState] = useState(null)
   const [sessionLabel, setSessionLabel] = useState(null)
   const [webhookUrl, setWebhookUrl] = useState(null)
-  const [startBusy, setStartBusy] = useState(false)
-  const [stopBusy, setStopBusy] = useState(false)
+  const [actionBusy, setActionBusy] = useState(false)
+  const [endError, setEndError] = useState('')
+
+  const [meterLevel, setMeterLevel] = useState(0)
+  const [outputLabel, setOutputLabel] = useState('—')
+  const [networkName, setNetworkName] = useState('—')
+  const [lastWebhookRttMs, setLastWebhookRttMs] = useState(null)
+  const [lastWebhookOkAt, setLastWebhookOkAt] = useState(null)
+  const [online, setOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true,
+  )
 
   const appendLog = useCallback((entry) => {
     setLogs((prev) => [
@@ -120,6 +177,60 @@ export default function App() {
     ])
   }, [])
 
+  // Hardware input meter — app-open, independent of session / feedState
+  useEffect(() => {
+    const tap = createInputMeterTap({
+      onSample: (s) => setMeterLevel(s.level),
+      onError: (err) => appendLog({ level: 'warn', message: `Mic meter: ${err.message}` }),
+    })
+    tap.start().catch(() => {})
+    return () => {
+      tap.stop()
+    }
+  }, [appendLog])
+
+  useEffect(() => {
+    async function refreshOutput() {
+      try {
+        const all = await navigator.mediaDevices.enumerateDevices()
+        const outs = all.filter((d) => d.kind === 'audiooutput')
+        const def = outs.find((d) => d.deviceId === 'default') || outs[0]
+        setOutputLabel(def?.label || 'Default output')
+      } catch {
+        setOutputLabel('Output unavailable')
+      }
+    }
+    refreshOutput()
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshOutput)
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', refreshOutput)
+  }, [])
+
+  useEffect(() => {
+    function onOnline() {
+      setOnline(true)
+    }
+    function onOffline() {
+      setOnline(false)
+    }
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    getOndaSpike()
+      .getNetworkName()
+      .then((r) => setNetworkName(r?.name || '—'))
+      .catch(() => {})
+    const id = window.setInterval(() => {
+      getOndaSpike()
+        .getNetworkName()
+        .then((r) => setNetworkName(r?.name || '—'))
+        .catch(() => {})
+    }, 15000)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+      window.clearInterval(id)
+    }
+  }, [])
+
   useEffect(() => {
     if (!diagnosticsOpen) return
     logEndRef.current?.scrollIntoView({ block: 'end' })
@@ -127,7 +238,6 @@ export default function App() {
 
   useEffect(() => {
     function onKeyDown(e) {
-      // Cmd+Shift+D (Mac) or Ctrl+Shift+D (non-Mac preview)
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault()
         setDiagnosticsOpen((open) => !open)
@@ -146,7 +256,6 @@ export default function App() {
 
   useEffect(() => {
     const spike = getOndaSpike()
-
     const offLog = spike.onLog(appendLog)
     const offStatus = spike.onStatus((patch) => {
       if (patch.recording !== undefined) setRecording(Boolean(patch.recording))
@@ -155,26 +264,14 @@ export default function App() {
       if (patch.projectCheckError !== undefined) {
         setProjectCheckError(patch.projectCheckError || null)
       }
-      if (patch.lifecycleStatus !== undefined) setLifecycleStatus(patch.lifecycleStatus)
+      if (patch.feedState !== undefined) setFeedState(patch.feedState)
       if (patch.webhookUrl !== undefined) setWebhookUrl(patch.webhookUrl)
       if (patch.sessionLabel !== undefined) setSessionLabel(patch.sessionLabel)
-
+      if (patch.lastWebhookRttMs !== undefined) {
+        setLastWebhookRttMs(patch.lastWebhookRttMs)
+      }
+      if (patch.lastWebhookOkAt !== undefined) setLastWebhookOkAt(patch.lastWebhookOkAt)
       spike.getConfig().then((cfg) => setMetaText(formatMeta(cfg)))
-
-      if (patch.lastTranscript) {
-        appendLog({
-          level: 'info',
-          at: new Date().toISOString(),
-          message: `UI lastTranscript: ${patch.lastTranscript}`,
-        })
-      }
-      if (patch.audioDownloadPath) {
-        appendLog({
-          level: 'info',
-          at: new Date().toISOString(),
-          message: `Audio saved → ${patch.audioDownloadPath} (${patch.audioBytes} bytes)`,
-        })
-      }
     })
 
     spike.getConfig().then((cfg) => {
@@ -183,8 +280,12 @@ export default function App() {
       setRecording(Boolean(cfg.recording))
       setProjectCheckOk(Boolean(cfg.projectCheckOk))
       setProjectCheckError(cfg.projectCheckError || null)
-      // Always start at unlock — no last-session persistence
       setScreen('unlock')
+      const fb = getFirebaseConfigStatus()
+      appendLog({
+        level: 'info',
+        message: `Firebase client config: project=${fb.projectId || '—'} dbUrl=${fb.hasDatabaseUrl} apiKey=${fb.hasApiKey}`,
+      })
     })
 
     return () => {
@@ -198,8 +299,15 @@ export default function App() {
     [sessions, selectedSessionId],
   )
 
-  const canRecord = projectCheckOk && sdkReady && Boolean(selectedSessionId)
-  const capture = captureBadge({ recording, projectCheckOk, sdkReady })
+  const canControl = projectCheckOk && sdkReady && Boolean(selectedSessionId)
+  const capturing =
+    feedState === 'testing' || feedState === 'live' || feedState === 'stopping' || recording
+  const netColor = networkHealthColor({
+    rttMs: lastWebhookRttMs,
+    lastOkAt: lastWebhookOkAt,
+    online,
+    capturing,
+  })
 
   async function handleUnlock() {
     setUnlockError('')
@@ -208,17 +316,11 @@ export default function App() {
       return
     }
     setUnlockBusy(true)
-    appendLog({ level: 'info', at: new Date().toISOString(), message: 'Unlock attempt…' })
     try {
       const spike = getOndaSpike()
       const result = await spike.unlock(credentialInput)
       if (!result.ok) {
         setUnlockError(result.error || 'Invalid credential')
-        appendLog({
-          level: 'warn',
-          at: new Date().toISOString(),
-          message: `Unlock failed: ${result.error}`,
-        })
         return
       }
       const nextSessions = result.sessions || []
@@ -234,6 +336,7 @@ export default function App() {
 
   async function handleUseSession() {
     setSessionError('')
+    setEndError('')
     if (!currentSession || !show || !credential) {
       setSessionError('Select a session first.')
       return
@@ -249,7 +352,7 @@ export default function App() {
       setSessionError(result.error || 'Could not select session')
       return
     }
-    setLifecycleStatus(currentSession.lifecycleStatus)
+    setFeedState(currentSession.feedState || 'standby')
     setSessionLabel(currentSession.friendlyName || currentSession.title)
     setWebhookUrl(result.context?.webhookUrl || null)
     setScreen('record')
@@ -265,38 +368,97 @@ export default function App() {
   }
 
   async function handleChangeSession() {
+    setEndError('')
     await getOndaSpike().clearSession()
     setSelectedSessionId(sessions[0]?.id || null)
     setScreen('sessions')
   }
 
-  async function handleStart() {
-    setStartBusy(true)
-    appendLog({ level: 'info', at: new Date().toISOString(), message: 'Start clicked' })
+  async function handleSoundCheck() {
+    setActionBusy(true)
+    setEndError('')
+    appendLog({ level: 'info', message: 'Enable sound check clicked' })
     try {
       const result = await getOndaSpike().start()
       if (!result?.ok) {
         appendLog({
           level: 'error',
-          at: new Date().toISOString(),
-          message: `Start failed: ${result?.error || 'unknown'}`,
+          message: `Sound check failed: ${result?.error || 'unknown'}`,
+          extra: result,
+        })
+      } else {
+        setFeedState('testing')
+      }
+      await refreshMeta()
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function handleGoLive() {
+    setActionBusy(true)
+    setEndError('')
+    appendLog({ level: 'info', message: 'Go Live clicked' })
+    try {
+      const result = await getOndaSpike().goLive()
+      if (!result?.ok) {
+        appendLog({
+          level: 'error',
+          message: `Go Live failed: ${result?.error || 'unknown'}`,
+          extra: result,
+        })
+      } else {
+        setFeedState('live')
+      }
+      await refreshMeta()
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function handleEndSession() {
+    setActionBusy(true)
+    // Optimistic Stopping — if API fails, roll back to live with persistent error
+    setFeedState('stopping')
+    setEndError('')
+    appendLog({ level: 'info', message: 'End session clicked (optimistic stopping)' })
+    try {
+      const result = await getOndaSpike().stop()
+      if (!result?.ok) {
+        setFeedState(result?.rollbackTo || 'live')
+        setEndError(
+          result?.error
+            ? `End session failed — session is still live. ${result.error} Retry End session.`
+            : 'End session failed — session is still live. Retry End session.',
+        )
+        appendLog({
+          level: 'error',
+          message: `End failed; rolled back to live: ${result?.error}`,
           extra: result,
         })
       }
       await refreshMeta()
     } finally {
-      setStartBusy(false)
+      setActionBusy(false)
     }
   }
 
-  async function handleStop() {
-    setStopBusy(true)
-    appendLog({ level: 'info', at: new Date().toISOString(), message: 'Stop clicked' })
+  async function playTestTone() {
     try {
-      await getOndaSpike().stop()
-      await refreshMeta()
-    } finally {
-      setStopBusy(false)
+      const AC = window.AudioContext || window.webkitAudioContext
+      const ctx = new AC()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.frequency.value = 880
+      gain.gain.value = 0.08
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35)
+      osc.stop(ctx.currentTime + 0.4)
+      window.setTimeout(() => ctx.close(), 500)
+    } catch (err) {
+      appendLog({ level: 'warn', message: `Test tone failed: ${err?.message}` })
     }
   }
 
@@ -311,8 +473,41 @@ export default function App() {
             <span className="op-brand-name">Onda Operator</span>
           </div>
           {show ? (
-            <div className="op-header-show text-sm text-muted truncate">
-              {show.name}
+            <div className="op-header-show text-sm text-muted truncate">{show.name}</div>
+          ) : null}
+          {screen === 'record' ? (
+            <div className="op-header-session">
+              <label htmlFor="header-session" className="sr-only">
+                Session
+              </label>
+              <select
+                id="header-session"
+                className="input input-sm"
+                value={selectedSessionId || ''}
+                onChange={async (e) => {
+                  const id = e.target.value
+                  setSelectedSessionId(id)
+                  const s = sessions.find((x) => x.id === id)
+                  if (s && show && credential) {
+                    await getOndaSpike().selectSession({
+                      credential,
+                      showId: show.id,
+                      showName: show.name,
+                      session: s,
+                    })
+                    setFeedState(s.feedState || 'standby')
+                    setSessionLabel(s.friendlyName || s.title)
+                    setEndError('')
+                  }
+                }}
+                disabled={capturing && feedState !== 'ended'}
+              >
+                {sessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.friendlyName || s.title} — {operatorFeedLabel(s.feedState)}
+                  </option>
+                ))}
+              </select>
             </div>
           ) : null}
         </header>
@@ -374,7 +569,7 @@ export default function App() {
       {screen === 'sessions' ? (
         <section id="screen-sessions" className="op-screen op-screen-main">
           <div className="op-row">
-            <p className="op-section-kicker text-sm text-muted" id="show-label">
+            <p className="op-section-kicker text-sm text-muted">
               {show
                 ? `${show.name}${show.clientName ? ` · ${show.clientName}` : ''}`
                 : 'Show'}
@@ -391,50 +586,23 @@ export default function App() {
               value={selectedSessionId || ''}
               onChange={(e) => setSelectedSessionId(e.target.value)}
             >
-              {sessions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {`${s.friendlyName || s.title} — ${lifecycleBadgeLabel(s.lifecycleStatus)}`}
-                </option>
-              ))}
+              {sessions.length === 0 ? (
+                <option value="">No visible sessions (all drafts?)</option>
+              ) : (
+                sessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {`${s.friendlyName || s.title} — ${operatorFeedLabel(s.feedState)}`}
+                  </option>
+                ))
+              )}
             </select>
-          </div>
-          <div id="lifecycle-panel" className="card op-session-card">
-            {!currentSession ? (
-              <p className="text-sm text-muted" style={{ margin: 0 }}>
-                Select a session to see its status.
-              </p>
-            ) : (
-              <>
-                <div className="op-session-card-top">
-                  <div>
-                    <div className="op-session-name">
-                      {currentSession.friendlyName || currentSession.title}
-                    </div>
-                    <div className="text-sm text-muted">
-                      {currentSession.location || 'No room set'}
-                    </div>
-                  </div>
-                  <LifecycleBadge status={currentSession.lifecycleStatus} />
-                </div>
-                {currentSession.feedState ? (
-                  <div className="op-session-meta text-sm text-muted">
-                    Feed: {currentSession.feedState}
-                  </div>
-                ) : null}
-                {currentSession.lifecycleStatus === 'live' ||
-                currentSession.lifecycleStatus === 'stopping' ? (
-                  <div className="op-warn">
-                    {`This session is already ${lifecycleBadgeLabel(currentSession.lifecycleStatus).toLowerCase()} — start will be rejected if still active.`}
-                  </div>
-                ) : null}
-              </>
-            )}
           </div>
           <div className="op-controls op-controls-primary">
             <button
               id="btn-use-session"
               type="button"
               className="btn btn-primary"
+              disabled={!currentSession}
               onClick={handleUseSession}
             >
               Use selected session
@@ -455,49 +623,127 @@ export default function App() {
       ) : null}
 
       {screen === 'record' ? (
-        <section id="screen-record" className="op-screen op-screen-main">
-          <div id="record-lifecycle" className="card op-session-card op-session-card-hero">
-            <div className="op-session-card-top">
-              <div>
-                <p className="op-section-kicker text-sm text-muted" style={{ margin: 0 }}>
-                  {show?.name || '—'}
-                </p>
-                <div className="op-session-name">{sessionLabel || '—'}</div>
+        <section id="screen-record" className="op-screen op-screen-operator">
+          <div className="op-operator-layout">
+            <div className="op-caption-panel" aria-label="Live caption preview">
+              <div className="op-caption-frame">
+                <CaptionPreview sessionId={selectedSessionId} feedState={feedState} />
               </div>
-              <div className="op-badge-stack">
-                <LifecycleBadge status={lifecycleStatus} />
-                <span className={capture.className} id="state">
-                  {capture.label === 'Recording' ? (
-                    <span className="live-dot" aria-hidden="true" />
-                  ) : null}
-                  {capture.label}
+            </div>
+
+            <div className="op-status-grid">
+              <div className="op-grid-cell">
+                <div className="op-grid-label">Input</div>
+                <div className="op-meter" aria-label={`Input level ${meterLevel}`}>
+                  <div className="op-meter-fill" style={{ width: `${meterLevel}%` }} />
+                </div>
+                <div className="text-sm text-muted">{meterLevel}</div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => getOndaSpike().openOsSettings('sound')}
+                >
+                  Sound settings
+                </button>
+              </div>
+
+              <div className="op-grid-cell">
+                <div className="op-grid-label">Output</div>
+                <div className="op-grid-value truncate" title={outputLabel}>
+                  {outputLabel}
+                </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={playTestTone}>
+                  Play test tone
+                </button>
+              </div>
+
+              <div className="op-grid-cell">
+                <div className="op-grid-label">Network</div>
+                <div className="op-net-row">
+                  <span className={`op-net-dot op-net-${netColor}`} aria-label={netColor} />
+                  <span className="op-grid-value truncate" title={networkName}>
+                    {networkName}
+                  </span>
+                </div>
+                <div className="text-sm text-muted">
+                  {lastWebhookRttMs != null ? `${lastWebhookRttMs} ms RTT` : 'No webhook RTT yet'}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => getOndaSpike().openOsSettings('network')}
+                >
+                  Network settings
+                </button>
+              </div>
+
+              <div className="op-grid-cell">
+                <div className="op-grid-label">Status</div>
+                <span className={feedBadgeClass(feedState)}>
+                  {feedState === 'live' ? <span className="live-dot" aria-hidden="true" /> : null}
+                  {operatorFeedLabel(feedState)}
                 </span>
+                <div className="op-grid-value" style={{ marginTop: 8 }}>
+                  {sessionLabel || '—'}
+                </div>
+                <div className="text-sm text-muted">{show?.name || ''}</div>
               </div>
             </div>
           </div>
-          <div className="op-controls op-controls-primary">
+
+          {endError ? (
+            <div className="alert alert-error" role="alert" style={{ marginTop: 16 }}>
+              {endError}
+            </div>
+          ) : null}
+
+          <div className="op-controls op-controls-primary op-controls-below">
+            {feedState === 'standby' || !feedState ? (
+              <button
+                type="button"
+                className="btn btn-secondary btn-lg"
+                disabled={actionBusy || !canControl}
+                onClick={handleSoundCheck}
+              >
+                Enable sound check
+              </button>
+            ) : feedState === 'testing' || feedState === 'live' || feedState === 'stopping' ? (
+              <span className="badge badge-info">Sound check active</span>
+            ) : null}
+
+            {feedState === 'live' || feedState === 'stopping' ? (
+              <button
+                type="button"
+                className="btn btn-danger btn-lg"
+                disabled={actionBusy || feedState === 'stopping'}
+                onClick={handleEndSession}
+              >
+                {feedState === 'stopping' ? 'Stopping…' : 'End session'}
+              </button>
+            ) : feedState === 'ended' ? (
+              <span className="badge badge-muted">Ended</span>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                disabled={actionBusy || feedState !== 'testing'}
+                title={
+                  feedState === 'standby' || !feedState
+                    ? 'Run sound check first.'
+                    : feedState === 'testing'
+                      ? 'Go live for attendees'
+                      : undefined
+                }
+                onClick={handleGoLive}
+              >
+                Go Live
+              </button>
+            )}
+
             <button
-              id="start"
               type="button"
-              className="btn btn-primary btn-lg"
-              disabled={startBusy || recording || !canRecord}
-              onClick={handleStart}
-            >
-              Start recording
-            </button>
-            <button
-              id="stop"
-              type="button"
-              className="btn btn-danger btn-lg"
-              disabled={stopBusy || !recording}
-              onClick={handleStop}
-            >
-              Stop + retrieve audio
-            </button>
-            <button
-              id="btn-change-session"
-              type="button"
-              className="btn btn-secondary"
+              className="btn btn-ghost"
+              disabled={capturing && feedState !== 'ended' && feedState !== 'stopping'}
               onClick={handleChangeSession}
             >
               Change session
@@ -507,11 +753,7 @@ export default function App() {
       ) : null}
 
       {diagnosticsOpen ? (
-        <aside
-          className="op-diagnostics"
-          id="diagnostics-panel"
-          aria-label="Diagnostics"
-        >
+        <aside className="op-diagnostics" id="diagnostics-panel" aria-label="Diagnostics">
           <div className="op-diagnostics-header">
             <div>
               <div className="font-semibold">Diagnostics</div>

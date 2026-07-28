@@ -370,14 +370,14 @@ export default function AudioConcurrencySpike() {
               >
                 {sessions.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.friendlyName || s.title} ({s.lifecycleStatus})
+                    {s.friendlyName || s.title} ({s.feedState})
                   </option>
                 ))}
               </select>
             </p>
             {currentSession ? (
               <p className="text-sm text-muted">
-                feed={currentSession.feedState} · lifecycle={currentSession.lifecycleStatus}
+                feed={currentSession.feedState}
               </p>
             ) : null}
             <div className="op-controls">

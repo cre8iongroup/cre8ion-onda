@@ -17,6 +17,7 @@
   "dependencies": {
     "@recallai/desktop-sdk": "^2.0.26",
     "dotenv": "^16.4.7",
+    "firebase": "^11.10.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

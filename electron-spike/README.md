@@ -1,23 +1,23 @@
-# Electron + Recall Desktop SDK — Tech Operator Step 1
+# Onda Operator — Electron + Recall Desktop SDK
 
-Minimal Electron shell for Onda in-person capture with **real** show unlock +
-session lifecycle (no hardcoded `SESSION_ID`).
+Onda Operator captures in-person / adhoc audio via Recall Desktop SDK and
+drives session `feedState`: `standby → testing → live → stopping → ended`.
 
-Flow: **techCredential unlock → session select → startSession API → Recall SDK →
-per-session webhook → stopSession (stopping) → sdk_upload.complete → ended**
+Flow: **techCredential unlock → session select (non-draft) → sound check →
+Go Live → End → webhook `ended`**
 
-See `STEP1_NOTES.md` for lifecycle details and Recall webhook caveats.
+See `SLICE_2B_PLAN.md` for the full state model and UI contract.
 
 ## Requirements
 
-- **macOS Apple Silicon** (primary). Windows supported by SDK but not validated here.
+- **macOS** (primary; Tahoe 26.x Settings deep-links). Windows supported by SDK but not fully validated.
 - Node 20+
 - Recall API key + region
 - Next.js (`npm run dev`) with:
   - `NEXT_PUBLIC_FIREBASE_PROJECT_ID=cre8ion-onda` (**hard fail otherwise**)
   - `RECALL_WEBHOOK_SECRET`
   - Firebase Admin credentials
-  - Show documents with `techCredential` + `sessions` subcollection
+  - Show documents with `techCredential` + sessions (`isDraft: false` to appear)
 
 ## Setup
 
@@ -30,42 +30,33 @@ npm run dev
 # 2) Electron
 cd electron-spike
 cp .env.example .env
-# fill RECALL_API_KEY, RECALL_WEBHOOK_SECRET, ONDA_API_BASE
+# fill RECALL_*, ONDA_API_BASE, and NEXT_PUBLIC_FIREBASE_* (client config only)
 npm install
 npm start   # builds React renderer (Vite) then launches Electron
 ```
 
-### Renderer (Stage 1 — React + Vite)
+### Firebase client env (renderer RTDB caption preview)
 
-- Source: `renderer-src/` (React)
-- Build output: `renderer/` (loaded by existing `main.js` via `loadFile`)
-- Styles: `renderer-src/styles/onda.css` — tokens/primitives copied from `app/globals.css`
-- IPC: unchanged — `preload.js` → `window.ondaSpike`
-- Browser-only preview (no Electron): `npm run build:renderer && npm run preview:renderer`
+Copy the same **public** `NEXT_PUBLIC_FIREBASE_*` values used by the Next app into
+`electron-spike/.env`. These are **not** Admin SDK / service-account credentials:
+
+- `NEXT_PUBLIC_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `NEXT_PUBLIC_FIREBASE_APP_ID`
+- `NEXT_PUBLIC_FIREBASE_DATABASE_URL`
 
 ## Operator flow
 
-1. **Unlock** — enter the show’s `techCredential` (validated via `/api/tech/unlock`)
-2. **Select session** — list shows current `lifecycleStatus` (ready/preproduction ≈ scheduled)
-3. **Start** — calls `/api/tech/sessions/start` (rejects if already live) then Recall SDK
-4. **Speak** — transcripts POST to `/api/webhook/{sessionId}` → RTDB chunks
-5. **Stop** — `/api/tech/sessions/stop` → `stopping`; SDK stop + retrieve audio; then
-   `sdk_upload.complete` flips session to `ended` (not on button click alone)
-
-## Offline checks
-
-```bash
-cd electron-spike && npm run verify-normalize
-```
+1. **Unlock** — show `techCredential`
+2. **Select session** — drafts (`isDraft=true`) are omitted
+3. **Enable sound check** — `feedState → testing` + Recall `startRecording`
+4. **Go Live** — `feedState → live` (same continuous take)
+5. **End session** — optimistic `stopping`; webhook → `ended`
 
 ## Slice 2B Step 0 — audio concurrency spike
 
-Isolated harness (does not replace Stage 2A UI):
-
-- **Plan (authoritative):** `SLICE_2B_PLAN.md`
-- Concurrency audit / Mac runbook: `AUDIO_CONCURRENCY_SPIKE.md`, `SLICE_2B_AUDIT_AND_PLAN.md`
-- Open in-app: diagnostics `⌘⇧D` → **Audio concurrency spike**, or `#audio-concurrency-spike`
-
-## Non-goals (Step 2+)
-
-Visual polish, reconnect handling, code signing, multi-session-per-device.
+- Docs: `AUDIO_CONCURRENCY_SPIKE.md`
+- Open: diagnostics `⌘⇧D` → **Audio concurrency spike**, or `#audio-concurrency-spike`

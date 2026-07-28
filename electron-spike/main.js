@@ -1,17 +1,17 @@
 /**
- * Onda Electron — Tech Operator Step 1
+ * Onda Operator — Electron main process (Slice 2B)
  *
- * Replaces hardcoded sessionId / webhook URL with:
+ * Flow:
  *  1. techCredential unlock → show
- *  2. session selection (Firestore via API)
- *  3. startSession / stopSession API (Electron never writes Firestore)
+ *  2. session selection (non-draft only via API)
+ *  3. sound check / go-live / end via API (Electron never writes Firestore)
  *  4. per-session webhook /api/webhook/[sessionId]
  *  5. Loud fail if Firebase project ≠ cre8ion-onda
  */
 
 const path = require('path')
 const fs = require('fs')
-const { app, BrowserWindow, ipcMain, systemPreferences } = require('electron')
+const { app, BrowserWindow, ipcMain, systemPreferences, shell } = require('electron')
 const dotenv = require('dotenv')
 
 dotenv.config({ path: path.join(__dirname, '.env') })
@@ -38,7 +38,7 @@ const CONFIG = {
   ),
 }
 
-/** @type {{ credential: string, showId: string, showName: string, sessionId: string, sessionLabel: string, lifecycleStatus: string, webhookUrl: string } | null} */
+/** @type {{ credential: string, showId: string, showName: string, sessionId: string, sessionLabel: string, feedState: string, webhookUrl: string } | null} */
 let activeContext = null
 
 let mainWindow = null
@@ -352,8 +352,8 @@ async function startRecording() {
   }
 
   try {
-    // 1) Authoritative live transition via API (not Firestore from Electron)
-    sendLog('info', 'Calling startSession…', {
+    // 1) Sound check — feedState → testing via API (not Firestore from Electron)
+    sendLog('info', 'Calling startSession (sound check)…', {
       showId: activeContext.showId,
       sessionId: activeContext.sessionId,
     })
@@ -365,12 +365,12 @@ async function startRecording() {
         sessionId: activeContext.sessionId,
       },
     })
-    activeContext.lifecycleStatus = started.session?.lifecycleStatus || 'live'
+    activeContext.feedState = started.session?.feedState || 'testing'
     sendStatus({
-      lifecycleStatus: activeContext.lifecycleStatus,
+      feedState: activeContext.feedState,
       session: started.session,
     })
-    sendLog('info', 'startSession OK — session is live', started.session)
+    sendLog('info', 'startSession OK — sound check (testing)', started.session)
 
     // 2) Create Recall upload
     sendLog('info', 'Creating Desktop SDK upload…', { sessionId: activeContext.sessionId })
@@ -484,11 +484,42 @@ async function notifyUploadComplete() {
       { body: text },
     )
     if (res.ok) {
-      activeContext.lifecycleStatus = 'ended'
-      sendStatus({ lifecycleStatus: 'ended' })
+      activeContext.feedState = 'ended'
+      sendStatus({ feedState: 'ended' })
     }
   } catch (err) {
     sendLog('error', 'Failed to forward sdk_upload.complete', { message: err.message })
+  }
+}
+
+async function goLive() {
+  if (!activeContext?.sessionId) {
+    return { ok: false, error: 'No active session' }
+  }
+  try {
+    sendLog('info', 'Calling goLiveSession (feed → live)…')
+    const result = await ondaFetch('/api/tech/sessions/go-live', {
+      method: 'POST',
+      body: {
+        credential: activeContext.credential,
+        showId: activeContext.showId,
+        sessionId: activeContext.sessionId,
+      },
+    })
+    activeContext.feedState = result.session?.feedState || 'live'
+    sendStatus({
+      feedState: activeContext.feedState,
+      session: result.session,
+    })
+    sendLog('info', 'goLiveSession OK', result.session)
+    return { ok: true, session: result.session }
+  } catch (err) {
+    sendLog('error', 'goLiveSession failed', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+    })
+    return { ok: false, error: err.message || 'go live failed', code: err.code }
   }
 }
 
@@ -498,8 +529,8 @@ async function stopRecording() {
   }
 
   try {
-    // Intermediate stopping state — NOT ended
-    sendLog('info', 'Calling stopSession (lifecycle → stopping)…')
+    // Immediate stopping — NOT ended
+    sendLog('info', 'Calling stopSession (feed → stopping)…')
     const stopped = await ondaFetch('/api/tech/sessions/stop', {
       method: 'POST',
       body: {
@@ -508,9 +539,9 @@ async function stopRecording() {
         sessionId: activeContext.sessionId,
       },
     })
-    activeContext.lifecycleStatus = stopped.session?.lifecycleStatus || 'stopping'
+    activeContext.feedState = stopped.session?.feedState || 'stopping'
     sendStatus({
-      lifecycleStatus: activeContext.lifecycleStatus,
+      feedState: activeContext.feedState,
       session: stopped.session,
     })
     sendLog('info', 'stopSession OK — waiting for Recall complete before ended', stopped.session)
@@ -520,7 +551,13 @@ async function stopRecording() {
       code: err.code,
       detail: err.detail,
     })
-    // Continue stopping the SDK anyway so local capture ends
+    // Do not stop Recall if API failed — UI should roll back optimistic Stopping → live
+    return {
+      ok: false,
+      error: err.message || 'stop failed',
+      code: err.code,
+      rollbackTo: 'live',
+    }
   }
 
   if (!RecallAiSdk) {
@@ -616,7 +653,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-    title: 'Onda Tech Operator — Step 1',
+    title: 'Onda Operator',
   })
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
 }
@@ -685,13 +722,13 @@ ipcMain.handle('spike:select-session', async (_evt, payload) => {
     showName: showName || showId,
     sessionId: session.id,
     sessionLabel: session.friendlyName || session.title || session.id,
-    lifecycleStatus: session.lifecycleStatus || 'unknown',
+    feedState: session.feedState || 'standby',
     webhookUrl: webhookUrlForSession(session.id),
   }
   sequenceNumber = 0
   sendLog('info', 'Session selected', {
     sessionId: activeContext.sessionId,
-    lifecycleStatus: activeContext.lifecycleStatus,
+    feedState: activeContext.feedState,
     webhookUrl: activeContext.webhookUrl,
   })
   sendStatus({
@@ -699,7 +736,7 @@ ipcMain.handle('spike:select-session', async (_evt, payload) => {
     showName: activeContext.showName,
     sessionId: activeContext.sessionId,
     sessionLabel: activeContext.sessionLabel,
-    lifecycleStatus: activeContext.lifecycleStatus,
+    feedState: activeContext.feedState,
     webhookUrl: activeContext.webhookUrl,
   })
   return { ok: true, context: { ...activeContext, credential: undefined } }
@@ -712,7 +749,7 @@ ipcMain.handle('spike:clear-session', async () => {
     showName: null,
     sessionId: null,
     sessionLabel: null,
-    lifecycleStatus: null,
+    feedState: null,
     webhookUrl: null,
   })
   return { ok: true }
@@ -722,8 +759,73 @@ ipcMain.handle('spike:start', async () => {
   return startRecording()
 })
 
+ipcMain.handle('spike:go-live', async () => {
+  return goLive()
+})
+
 ipcMain.handle('spike:stop', async () => {
   return stopRecording()
+})
+
+ipcMain.handle('spike:open-os-settings', async (_evt, target) => {
+  const t = target === 'network' ? 'network' : 'sound'
+  try {
+    if (process.platform === 'darwin') {
+      const url =
+        t === 'network'
+          ? 'x-apple.systempreferences:com.apple.Network-Settings.extension'
+          : 'x-apple.systempreferences:com.apple.Sound-Settings.extension'
+      await shell.openExternal(url)
+    } else if (process.platform === 'win32') {
+      await shell.openExternal(t === 'network' ? 'ms-settings:network' : 'ms-settings:sound')
+    } else {
+      sendLog('warn', 'OS settings deep-link not supported on this platform', {
+        platform: process.platform,
+        target: t,
+      })
+      return { ok: false, error: 'Unsupported platform' }
+    }
+    return { ok: true }
+  } catch (err) {
+    sendLog('error', 'open-os-settings failed', { message: err?.message })
+    return { ok: false, error: err?.message || 'open failed' }
+  }
+})
+
+ipcMain.handle('spike:get-network-name', async () => {
+  try {
+    if (process.platform === 'darwin') {
+      const { execFile } = require('child_process')
+      const { promisify } = require('util')
+      const execFileAsync = promisify(execFile)
+      try {
+        const { stdout } = await execFileAsync('networksetup', ['-getairportnetwork', 'en0'])
+        const m = String(stdout).match(/Network:\s*(.+)$/m)
+        if (m?.[1] && !/You are not associated/i.test(m[1])) {
+          return { ok: true, name: m[1].trim() }
+        }
+      } catch {
+        /* fall through */
+      }
+      return { ok: true, name: 'Wired / unknown' }
+    }
+    if (process.platform === 'win32') {
+      const { execFile } = require('child_process')
+      const { promisify } = require('util')
+      const execFileAsync = promisify(execFile)
+      try {
+        const { stdout } = await execFileAsync('netsh', ['wlan', 'show', 'interfaces'])
+        const m = String(stdout).match(/SSID\s*:\s*(.+)/i)
+        if (m?.[1]) return { ok: true, name: m[1].trim() }
+      } catch {
+        /* fall through */
+      }
+      return { ok: true, name: 'Wired / unknown' }
+    }
+    return { ok: true, name: 'Unknown network' }
+  } catch (err) {
+    return { ok: false, name: 'Unknown', error: err?.message }
+  }
 })
 
 ipcMain.handle('spike:get-config', async () => ({
@@ -742,6 +844,7 @@ ipcMain.handle('spike:get-config', async () => ({
   showName: activeContext?.showName ?? null,
   sessionId: activeContext?.sessionId ?? null,
   sessionLabel: activeContext?.sessionLabel ?? null,
-  lifecycleStatus: activeContext?.lifecycleStatus ?? null,
+  feedState: activeContext?.feedState ?? null,
   webhookUrl: activeContext?.webhookUrl ?? null,
+  lastWebhookRttMs: null,
 }))

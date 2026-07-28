@@ -530,3 +530,163 @@ p {
 .line-warn { color: var(--color-warning); }
 .line-info { color: var(--color-text-primary); }
 .line-debug { color: var(--color-text-muted); }
+
+/* ── Slice 2B Onda Operator layout ───────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.op-screen-operator {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: var(--space-4) var(--space-6) var(--space-8);
+}
+
+.op-operator-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: var(--space-5);
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .op-operator-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.op-caption-panel {
+  min-width: 0;
+}
+
+.op-caption-frame {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  background: #050508;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.op-caption-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}
+
+.op-caption-line {
+  font-size: var(--text-lg);
+  line-height: 1.45;
+  color: var(--color-text-primary);
+}
+
+.op-caption-speaker {
+  display: inline-block;
+  margin-right: var(--space-2);
+  color: var(--color-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.op-caption-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+}
+
+.op-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.op-grid-cell {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 120px;
+}
+
+.op-grid-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.op-grid-value {
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+}
+
+.op-meter {
+  height: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.op-meter-fill {
+  height: 100%;
+  background: var(--color-secondary);
+  transition: width 50ms linear;
+}
+
+.op-net-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.op-net-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.op-net-green { background: var(--color-success); }
+.op-net-yellow { background: var(--color-warning); }
+.op-net-red { background: var(--color-danger); }
+
+.op-controls-below {
+  margin-top: var(--space-6);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.op-header-session {
+  margin-left: auto;
+  max-width: 280px;
+}
+
+.input-sm {
+  padding: 0.35rem 0.6rem;
+  font-size: var(--text-sm);
+}

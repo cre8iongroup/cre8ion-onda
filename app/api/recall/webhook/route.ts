@@ -32,7 +32,7 @@ export async function OPTIONS() {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers':
-        'Content-Type, svix-id, svix-timestamp, svix-signature',
+        'Content-Type, webhook-id, webhook-timestamp, webhook-signature, svix-id, svix-timestamp, svix-signature',
     },
   })
 }

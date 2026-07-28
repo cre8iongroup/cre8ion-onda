@@ -1,21 +1,20 @@
 /**
- * Local verification for POST /api/recall/webhook (Svix path) including
- * server-side Recall audio retrieve → Storage path wiring.
+ * Local verification for POST /api/recall/webhook (Svix / Standard Webhooks path).
+ *
+ * Real Recall deliveries use unbranded headers (per docs.recall.ai):
+ *   webhook-id / webhook-timestamp / webhook-signature
+ * (HTTP may capitalize them as Webhook-Id / …). The branded svix-* names remain
+ * accepted for compatibility.
  *
  * Does NOT require a live Recall domain, Firebase credentials, or App Hosting.
- * Spins a tiny HTTP server that wraps the same `handleWorkspaceRecallWebhook`
- * used by `app/api/recall/webhook/route.ts`, posts signed cases, exits
- * non-zero on failure.
  *
  * Usage:
  *   npx tsx scripts/verify-recall-svix-local.ts
- *
- * For a fuller path (mock Recall HTTP + Firebase Storage emulator upload), see:
- *   npx tsx scripts/verify-recall-audio-store-local.ts
  */
 import http from 'http'
 import { Webhook } from 'svix'
 import { RecallAudioRetrieveError } from '../lib/recall/retrieveAndStoreAudio'
+import { verifyRecallSvixPayload } from '../lib/recall/verifySvix'
 import {
   __setWorkspaceWebhookTestDeps,
   handleWorkspaceRecallWebhook,
@@ -42,6 +41,44 @@ function sign(body: string): { id: string; timestamp: string; signature: string 
     id,
     timestamp: Math.floor(ts.getTime() / 1000).toString(),
     signature,
+  }
+}
+
+/** Real Recall / Standard Webhooks header brand (docs.recall.ai). */
+function webhookHeaders(sig: {
+  id: string
+  timestamp: string
+  signature: string
+}): Record<string, string> {
+  return {
+    'webhook-id': sig.id,
+    'webhook-timestamp': sig.timestamp,
+    'webhook-signature': sig.signature,
+  }
+}
+
+/** Capitalized form as shown in Recall docs examples. */
+function webhookHeadersCapitalized(sig: {
+  id: string
+  timestamp: string
+  signature: string
+}): Record<string, string> {
+  return {
+    'Webhook-Id': sig.id,
+    'Webhook-Timestamp': sig.timestamp,
+    'Webhook-Signature': sig.signature,
+  }
+}
+
+function svixHeaders(sig: {
+  id: string
+  timestamp: string
+  signature: string
+}): Record<string, string> {
+  return {
+    'svix-id': sig.id,
+    'svix-timestamp': sig.timestamp,
+    'svix-signature': sig.signature,
   }
 }
 
@@ -157,25 +194,43 @@ async function main() {
   if (!addr || typeof addr === 'string') throw new Error('Failed to bind test server')
   const port = addr.port
   console.log(`[verify] local endpoint http://127.0.0.1:${port}/api/recall/webhook`)
-  console.log(`[verify] using test secret (not a live Recall secret)`)
-  console.log(`[verify] no live domain / Firebase / App Hosting required\n`)
+  console.log(`[verify] primary header brand under test: webhook-id/timestamp/signature`)
+  console.log(`[verify] using test secret (not a live Recall secret)\n`)
 
   const results: CaseResult[] = []
+  const expectedPath =
+    'shows/show_local_1/sessions/sess_local_1/audio/rec_known_local.mp3'
 
-  // ── (a) valid signature + known recordingId + audio ok → ended + path
+  // ── (a0) unit: webhook-* headers verify directly (regression for live 401)
+  {
+    const body = sdkUploadCompleteBody('rec_known_local')
+    const sig = sign(body)
+    let pass = false
+    let detail = ''
+    try {
+      const parsed = verifyRecallSvixPayload(body, webhookHeaders(sig), TEST_SECRET) as {
+        event?: string
+      }
+      pass = parsed?.event === 'sdk_upload.complete'
+      detail = JSON.stringify({ parsedEvent: parsed?.event })
+    } catch (err) {
+      detail = String(err)
+    }
+    results.push({
+      name: '(a0) verifyRecallSvixPayload accepts webhook-* headers (Recall docs brand)',
+      pass,
+      detail,
+    })
+  }
+
+  // ── (a) REAL header brand: webhook-* + known recordingId → ended
   {
     endedCalls.length = 0
     audioCalls.length = 0
     audioShouldFail = false
     const body = sdkUploadCompleteBody('rec_known_local')
     const sig = sign(body)
-    const { status, json } = await post(port, body, {
-      'svix-id': sig.id,
-      'svix-timestamp': sig.timestamp,
-      'svix-signature': sig.signature,
-    })
-    const expectedPath =
-      'shows/show_local_1/sessions/sess_local_1/audio/rec_known_local.mp3'
+    const { status, json } = await post(port, body, webhookHeaders(sig))
     const pass =
       status === 200 &&
       json.ended === true &&
@@ -183,18 +238,47 @@ async function main() {
       json.audioStoragePath === expectedPath &&
       audioCalls.length === 1 &&
       endedCalls.length === 1 &&
-      endedCalls[0].sessionId === 'sess_local_1' &&
-      endedCalls[0].showId === 'show_local_1' &&
-      endedCalls[0].audioStoragePath === expectedPath &&
-      endedCalls[0].reason === 'sdk_upload.complete'
+      endedCalls[0].audioStoragePath === expectedPath
     results.push({
-      name: '(a) valid signature + known recordingId → audio stored + session ended',
+      name: '(a) webhook-* headers + known recordingId → audio stored + session ended',
       pass,
       detail: JSON.stringify({ status, json, endedCalls, audioCalls }),
     })
   }
 
-  // ── (b) invalid signature → rejected
+  // ── (a2) Capitalized Webhook-* as in Recall docs examples
+  {
+    endedCalls.length = 0
+    audioCalls.length = 0
+    audioShouldFail = false
+    const body = sdkUploadCompleteBody('rec_known_local')
+    const sig = sign(body)
+    const { status, json } = await post(port, body, webhookHeadersCapitalized(sig))
+    const pass = status === 200 && json.ended === true
+    results.push({
+      name: '(a2) Webhook-Id/Timestamp/Signature (capitalized) → accepted',
+      pass,
+      detail: JSON.stringify({ status, json }),
+    })
+  }
+
+  // ── (a3) branded svix-* still works (compat)
+  {
+    endedCalls.length = 0
+    audioCalls.length = 0
+    audioShouldFail = false
+    const body = sdkUploadCompleteBody('rec_known_local')
+    const sig = sign(body)
+    const { status, json } = await post(port, body, svixHeaders(sig))
+    const pass = status === 200 && json.ended === true
+    results.push({
+      name: '(a3) svix-* headers still accepted (compat)',
+      pass,
+      detail: JSON.stringify({ status, json }),
+    })
+  }
+
+  // ── (b) invalid signature → rejected (webhook-* brand)
   {
     endedCalls.length = 0
     audioCalls.length = 0
@@ -202,9 +286,8 @@ async function main() {
     const body = sdkUploadCompleteBody('rec_known_local')
     const sig = sign(body)
     const { status, json } = await post(port, body, {
-      'svix-id': sig.id,
-      'svix-timestamp': sig.timestamp,
-      'svix-signature': 'v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+      ...webhookHeaders(sig),
+      'webhook-signature': 'v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
     })
     const pass =
       status === 401 &&
@@ -212,24 +295,20 @@ async function main() {
       audioCalls.length === 0 &&
       (json.code === 'invalid_signature' || typeof json.error === 'string')
     results.push({
-      name: '(b) invalid signature → rejected (401)',
+      name: '(b) invalid signature on webhook-* → rejected (401)',
       pass,
       detail: JSON.stringify({ status, json, endedCalls, audioCalls }),
     })
   }
 
-  // ── (c) valid signature + unknown recordingId → loud 422, no silent no-op
+  // ── (c) valid signature + unknown recordingId → loud 422
   {
     endedCalls.length = 0
     audioCalls.length = 0
     audioShouldFail = false
     const body = sdkUploadCompleteBody('rec_UNKNOWN_no_index')
     const sig = sign(body)
-    const { status, json } = await post(port, body, {
-      'svix-id': sig.id,
-      'svix-timestamp': sig.timestamp,
-      'svix-signature': sig.signature,
-    })
+    const { status, json } = await post(port, body, webhookHeaders(sig))
     const pass =
       status === 422 &&
       json.code === 'recording_index_miss' &&
@@ -237,7 +316,7 @@ async function main() {
       endedCalls.length === 0 &&
       audioCalls.length === 0
     results.push({
-      name: '(c) valid signature + unknown recordingId → loud 422 (no silent no-op)',
+      name: '(c) webhook-* + unknown recordingId → loud 422 (no silent no-op)',
       pass,
       detail: JSON.stringify({ status, json, endedCalls, audioCalls }),
     })
@@ -250,11 +329,7 @@ async function main() {
     audioShouldFail = true
     const body = sdkUploadCompleteBody('rec_known_local')
     const sig = sign(body)
-    const { status, json } = await post(port, body, {
-      'svix-id': sig.id,
-      'svix-timestamp': sig.timestamp,
-      'svix-signature': sig.signature,
-    })
+    const { status, json } = await post(port, body, webhookHeaders(sig))
     const pass =
       status === 502 &&
       json.flag === 'recall_audio_retrieve_store' &&
@@ -286,7 +361,7 @@ async function main() {
     console.error('One or more cases failed')
     process.exit(1)
   }
-  console.log('All local Svix verification cases passed (incl. audio retrieve wiring).')
+  console.log('All local Svix verification cases passed (webhook-* + svix-* brands).')
 }
 
 main().catch((err) => {

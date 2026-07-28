@@ -46,7 +46,7 @@ const TEST_SECRET =
 const SHOW_ID = 'show_audio_verify'
 const SESSION_ID = 'sess_audio_verify'
 const MOCK_RECORDING_ID = 'rec_audio_verify_local'
-const BUCKET = 'cre8ion-onda.appspot.com'
+const BUCKET = 'cre8ion-onda.firebasestorage.app'
 
 /** Minimal valid-ish MP3 frame payload (not playable; enough non-empty bytes). */
 const MOCK_MP3 = Buffer.from([

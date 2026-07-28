@@ -161,16 +161,24 @@ function getAdminApp(): App {
   // Hard fail: cre8ion-onda vs cre8ion-onda-503301 collision (see header comment).
   assertCorrectFirebaseProject({ projectId, databaseHost })
 
+  const { bucket: storageBucket, source: storageBucketSource } =
+    resolveFirebaseStorageBucket()
+
   cachedApp = initializeApp({
     credential: resolveCredential(),
     databaseURL,
     ...(projectId ? { projectId } : {}),
+    // Required for Admin Storage uploads — App Hosting injects the correct
+    // default via FIREBASE_CONFIG; also accept NEXT_PUBLIC_* / FIREBASE_STORAGE_BUCKET.
+    ...(storageBucket ? { storageBucket } : {}),
   })
 
   console.info('[firebase-admin] initialized', {
     appName: cachedApp.name,
     projectId: projectId ?? '(from credential)',
     databaseHost,
+    storageBucket: storageBucket ?? '(unset)',
+    storageBucketSource: storageBucketSource ?? '(none)',
     appsCount: getApps().length,
     credentialSource: process.env.FIREBASE_SERVICE_ACCOUNT_JSON
       ? 'FIREBASE_SERVICE_ACCOUNT_JSON'
@@ -339,4 +347,67 @@ export function getAdminAuth(): Auth {
 }
 export function getAdminStorage(): Storage {
   return getStorage(getAdminApp())
+}
+
+/**
+ * Normalize a Storage bucket id: strip `gs://` / trailing slash.
+ * Admin SDK wants `project.firebasestorage.app` or `project.appspot.com`, not a URL.
+ */
+export function normalizeStorageBucketName(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null
+  const cleaned = raw
+    .trim()
+    .replace(/^gs:\/\//i, '')
+    .replace(/\/+$/, '')
+  return cleaned || null
+}
+
+type StorageBucketSource =
+  | 'FIREBASE_CONFIG'
+  | 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'
+  | 'FIREBASE_STORAGE_BUCKET'
+
+/**
+ * Resolve the Cloud Storage bucket used by Admin uploads (webhook audio, etc.).
+ *
+ * Prefer App Hosting's auto-injected `FIREBASE_CONFIG.storageBucket` when present —
+ * that is the project default. Fall back to explicit env vars (manual Console /
+ * .env.local). Never guess `*.appspot.com` vs `*.firebasestorage.app`.
+ */
+export function resolveFirebaseStorageBucket(): {
+  bucket: string | null
+  source: StorageBucketSource | null
+} {
+  const fromConfig = normalizeStorageBucketName(readFirebaseConfig()?.storageBucket)
+  if (fromConfig) return { bucket: fromConfig, source: 'FIREBASE_CONFIG' }
+
+  const fromPublic = normalizeStorageBucketName(
+    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  )
+  if (fromPublic) {
+    return { bucket: fromPublic, source: 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET' }
+  }
+
+  const fromServer = normalizeStorageBucketName(process.env.FIREBASE_STORAGE_BUCKET)
+  if (fromServer) return { bucket: fromServer, source: 'FIREBASE_STORAGE_BUCKET' }
+
+  return { bucket: null, source: null }
+}
+
+function readFirebaseConfig(): {
+  storageBucket?: string
+  databaseURL?: string
+  projectId?: string
+} | null {
+  const raw = process.env.FIREBASE_CONFIG?.trim()
+  if (!raw || raw[0] !== '{') return null
+  try {
+    return JSON.parse(raw) as {
+      storageBucket?: string
+      databaseURL?: string
+      projectId?: string
+    }
+  } catch {
+    return null
+  }
 }

@@ -505,7 +505,12 @@ export default function App() {
             <span className="op-brand-name">Onda Operator</span>
           </div>
           {show ? (
-            <div className="op-header-show text-sm text-muted truncate">{show.name}</div>
+            <div className="op-header-show text-sm text-muted truncate">
+              {show.name}
+              {screen === 'record' && feedState
+                ? ` · ${operatorFeedLabel(feedState)}`
+                : ''}
+            </div>
           ) : null}
         </header>
       ) : null}
@@ -676,6 +681,19 @@ export default function App() {
         <section id="screen-record" className="op-screen op-screen-operator">
           <div className="op-record-header">
             <div className="op-record-header-text">
+              <button
+                type="button"
+                className="op-record-back"
+                disabled={capturing && feedState !== 'ended'}
+                title={
+                  capturing && feedState !== 'ended'
+                    ? 'End the session before leaving'
+                    : 'Back to session list'
+                }
+                onClick={handleBackToSessionList}
+              >
+                ‹ Sessions
+              </button>
               <h2 className="op-record-title">{recordTitle}</h2>
               <p className="op-record-room text-sm text-muted">{recordRoomName}</p>
             </div>
@@ -715,20 +733,6 @@ export default function App() {
                   Go Live
                 </button>
               )}
-
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={capturing && feedState !== 'ended'}
-                title={
-                  capturing && feedState !== 'ended'
-                    ? 'End the session before leaving'
-                    : 'Back to session list'
-                }
-                onClick={handleBackToSessionList}
-              >
-                Sessions
-              </button>
             </div>
           </div>
 
@@ -779,14 +783,6 @@ export default function App() {
                 >
                   Network settings
                 </button>
-              </div>
-
-              <div className="op-grid-cell op-grid-cell-status">
-                <div className="op-grid-label">Status</div>
-                <span className={feedBadgeClass(feedState)}>
-                  {feedState === 'live' ? <span className="live-dot" aria-hidden="true" /> : null}
-                  {operatorFeedLabel(feedState)}
-                </span>
               </div>
             </div>
           </div>

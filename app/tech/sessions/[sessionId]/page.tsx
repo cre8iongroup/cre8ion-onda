@@ -119,7 +119,7 @@ function OperatorInner({ sessionId }: { sessionId: string }) {
           <span className={`badge ${session.feedState === 'live' ? 'badge-live' : 'badge-standby'}`}>
             feed: {session.feedState}
           </span>
-          <span className="badge badge-muted">{session.lifecycleStatus}</span>
+          {session.isDraft ? <span className="badge badge-muted">draft</span> : null}
         </div>
       </div>
 

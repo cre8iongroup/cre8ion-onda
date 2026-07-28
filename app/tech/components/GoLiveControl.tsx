@@ -51,6 +51,9 @@ export default function GoLiveControl({
 
   return (
     <div className="card go-live-panel" id="tech-go-live-control">
+      <div className="alert alert-warning" role="status" style={{ marginBottom: 'var(--space-4)' }}>
+        This page is outdated — use Onda Operator to run live sessions.
+      </div>
       <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-2)' }}>Feed control</h3>
       <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
         Current feed state:{' '}

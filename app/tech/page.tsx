@@ -44,7 +44,10 @@ function isRelevantNow(session: SessionDoc): boolean {
   if (!start || !end) return true
   const windowStart = startOfToday()
   const windowEnd = endOfTomorrow()
-  const liveish = session.feedState === 'live' || session.feedState === 'paused' || session.lifecycleStatus === 'live'
+  const liveish =
+    session.feedState === 'live' ||
+    session.feedState === 'stopping' ||
+    session.feedState === 'testing'
   if (liveish) return true
   return end >= windowStart && start <= windowEnd
 }
@@ -111,7 +114,7 @@ export default function TechSessionsPage() {
     }
   }, [showId])
 
-  const relevant = sessions.filter(isRelevantNow)
+  const relevant = sessions.filter((s) => s.isDraft !== true && isRelevantNow(s))
 
   return (
     <div className="panel-content">
@@ -148,7 +151,7 @@ export default function TechSessionsPage() {
           <p style={{ color: 'var(--color-text-secondary)' }}>
             {sessions.length === 0
               ? 'This show has no sessions yet. Ask an admin to create one.'
-              : 'No sessions scheduled for today/tomorrow. Live or paused feeds still appear here.'}
+              : 'No sessions scheduled for today/tomorrow. Live or stopping feeds still appear here.'}
           </p>
         </div>
       ) : (
@@ -177,7 +180,9 @@ export default function TechSessionsPage() {
                   <span className={`badge ${session.feedState === 'live' ? 'badge-live' : 'badge-standby'}`}>
                     feed: {session.feedState}
                   </span>
-                  <span className="badge badge-muted">{session.lifecycleStatus}</span>
+                  {session.isDraft ? (
+                    <span className="badge badge-muted">draft</span>
+                  ) : null}
                 </div>
               </div>
             </Link>

@@ -58,6 +58,13 @@ npm start   # builds React renderer (Vite) then launches Electron
 cd electron-spike && npm run verify-normalize
 ```
 
+## Slice 2B Step 0 — audio concurrency spike
+
+Isolated harness (does not replace Stage 2A UI):
+
+- Docs: `AUDIO_CONCURRENCY_SPIKE.md`, `SLICE_2B_AUDIT_AND_PLAN.md`
+- Open in-app: diagnostics `⌘⇧D` → **Audio concurrency spike**, or `#audio-concurrency-spike`
+
 ## Non-goals (Step 2+)
 
 Visual polish, reconnect handling, code signing, multi-session-per-device.

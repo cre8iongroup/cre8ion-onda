@@ -210,8 +210,31 @@ function wireSdkEvents() {
     sendLog('info', 'SDK event: sdk-state-change', evt)
   })
 
+  // Binary speech activity (no levels) — useful for concurrency spike / operator debug.
+  // Event name may vary by SDK version; never fail init if unsupported.
+  for (const name of ['speech_on', 'speech_off']) {
+    try {
+      RecallAiSdk.addEventListener(name, (evt) => {
+        sendLog('info', `SDK event: ${name}`, evt)
+        sendStatus({ speechActive: name === 'speech_on', speechAt: Date.now() })
+      })
+    } catch (err) {
+      sendLog('debug', `SDK addEventListener("${name}") unavailable`, { message: err?.message })
+    }
+  }
+
   RecallAiSdk.addEventListener('realtime-event', async (evt) => {
     const eventName = evt?.event ?? evt?.type ?? 'unknown'
+    if (eventName === 'speech_on' || eventName === 'audio.speech_on') {
+      sendLog('info', 'SDK realtime: speech_on', evt)
+      sendStatus({ speechActive: true, speechAt: Date.now() })
+      return
+    }
+    if (eventName === 'speech_off' || eventName === 'audio.speech_off') {
+      sendLog('info', 'SDK realtime: speech_off', evt)
+      sendStatus({ speechActive: false, speechAt: Date.now() })
+      return
+    }
     if (eventName !== 'transcript.data' && eventName !== 'transcript.partial_data') {
       sendLog('debug', `realtime-event: ${eventName}`)
       return

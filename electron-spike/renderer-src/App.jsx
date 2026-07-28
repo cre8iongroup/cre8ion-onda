@@ -517,13 +517,18 @@ export default function App() {
               <div className="font-semibold">Diagnostics</div>
               <div className="text-sm text-muted">Toggle with ⌘⇧D</div>
             </div>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => setDiagnosticsOpen(false)}
-            >
-              Close
-            </button>
+            <div className="op-controls" style={{ gap: 8 }}>
+              <a className="btn btn-secondary btn-sm" href="#audio-concurrency-spike">
+                Audio concurrency spike
+              </a>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setDiagnosticsOpen(false)}
+              >
+                Close
+              </button>
+            </div>
           </div>
           <div className="op-meta" id="meta">
             {metaText}

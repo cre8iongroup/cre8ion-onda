@@ -136,6 +136,7 @@ export default function CreateShowModal({
         },
         defaultLanguages: ['en', 'es'],
         portalPublished: false,
+        rooms: [],
         techCredential: values.techCredential.trim(),
         createdAt: Timestamp.now(),
         createdBy,

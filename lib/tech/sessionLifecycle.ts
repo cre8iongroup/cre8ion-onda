@@ -16,13 +16,16 @@ import {
   setRtdbJson,
   updateRtdbJson,
 } from '@/lib/firebase/admin'
-import type { FeedState, SessionDoc, ShowDoc } from '@/types'
+import type { FeedState, SessionDoc, ShowDoc, ShowRoom } from '@/types'
+import { resolveRoomName } from '@/lib/rooms'
 
 export type SessionSummary = {
   id: string
   title: string
   friendlyName: string
-  location: string
+  roomId: string
+  /** Resolved from show.rooms at unlock/read time (may be "Unknown room"). */
+  roomName: string
   isDraft: boolean
   feedState: FeedState
   scheduledStart: string | null
@@ -34,6 +37,11 @@ export type UnlockedShow = {
   name: string
   clientName: string
   portalURL: string | null
+}
+
+export type UnlockedRoom = {
+  id: string
+  name: string
 }
 
 export class TechLifecycleError extends Error {
@@ -60,9 +68,11 @@ function asFeedState(value: unknown): FeedState {
 function sessionSummaryFromDoc(
   id: string,
   data: Record<string, any>,
+  rooms?: ShowRoom[] | null,
 ): SessionSummary {
   const scheduledStart = data.scheduledStart?.toDate?.() as Date | undefined
   const scheduledEnd = data.scheduledEnd?.toDate?.() as Date | undefined
+  const roomId = typeof data.roomId === 'string' ? data.roomId : ''
   return {
     id,
     title: typeof data.title === 'string' ? data.title : id,
@@ -72,7 +82,8 @@ function sessionSummaryFromDoc(
         : typeof data.title === 'string'
           ? data.title
           : id,
-    location: typeof data.location === 'string' ? data.location : '',
+    roomId,
+    roomName: resolveRoomName(rooms, roomId),
     isDraft: data.isDraft === true,
     feedState: asFeedState(data.feedState),
     scheduledStart: scheduledStart ? scheduledStart.toISOString() : null,
@@ -83,7 +94,7 @@ function sessionSummaryFromDoc(
 /** Find exactly one show whose techCredential matches (Admin SDK). */
 export async function unlockShowByCredential(
   credential: string,
-): Promise<{ show: UnlockedShow; sessions: SessionSummary[] }> {
+): Promise<{ show: UnlockedShow; rooms: UnlockedRoom[]; sessions: SessionSummary[] }> {
   const trimmed = credential.trim()
   if (!trimmed) {
     throw new TechLifecycleError(400, 'missing_credential', 'Credential is required')
@@ -109,9 +120,16 @@ export async function unlockShowByCredential(
 
   const showDoc = snap.docs[0]
   const showData = showDoc.data() as ShowDoc
+  const rooms: UnlockedRoom[] = Array.isArray(showData.rooms)
+    ? showData.rooms
+        .filter((r): r is ShowRoom => Boolean(r?.id && typeof r.name === 'string'))
+        .map((r) => ({ id: r.id, name: r.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    : []
+
   const sessionsSnap = await showDoc.ref.collection('sessions').get()
   const sessions = sessionsSnap.docs
-    .map((d) => sessionSummaryFromDoc(d.id, d.data()))
+    .map((d) => sessionSummaryFromDoc(d.id, d.data(), rooms))
     // Onda Operator never sees drafts
     .filter((s) => !s.isDraft)
     .sort((a, b) => {
@@ -127,6 +145,7 @@ export async function unlockShowByCredential(
       clientName: showData.clientName,
       portalURL: showData.branding?.portalURL ?? null,
     },
+    rooms,
     sessions,
   }
 }
@@ -157,15 +176,16 @@ async function loadSession(
   sessionId: string,
 ): Promise<{ ref: DocumentReference; data: SessionDoc; summary: SessionSummary }> {
   const sessionRef = showRef.collection('sessions').doc(sessionId)
-  const sessionSnap = await sessionRef.get()
+  const [sessionSnap, showSnap] = await Promise.all([sessionRef.get(), showRef.get()])
   if (!sessionSnap.exists) {
     throw new TechLifecycleError(404, 'session_not_found', 'Session not found')
   }
   const data = sessionSnap.data() as SessionDoc
+  const rooms = (showSnap.data() as ShowDoc | undefined)?.rooms ?? []
   return {
     ref: sessionRef,
     data,
-    summary: sessionSummaryFromDoc(sessionId, data as unknown as Record<string, any>),
+    summary: sessionSummaryFromDoc(sessionId, data as unknown as Record<string, any>, rooms),
   }
 }
 

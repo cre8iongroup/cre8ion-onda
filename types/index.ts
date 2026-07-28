@@ -136,6 +136,20 @@ export interface SessionDoc {
   aiSummaryTriggeredBy?: string
   publishedAt?: Timestamp
   outputLayoutTemplateId?: string
+  /**
+   * Recall recording id bound at start / written again on sdk_upload.complete.
+   * Used with recordingIndex and server-side audio retrieve.
+   */
+  recordingId?: string
+  /**
+   * Firebase Storage object path for the mixed session audio uploaded by the
+   * workspace Svix webhook after verified `sdk_upload.complete`.
+   * Canonical form: `shows/{showId}/sessions/{sessionId}/audio/{recordingId}.mp3`
+   * Review panel should read this field to locate the file — do not invent paths.
+   */
+  audioStoragePath?: string
+  /** Server timestamp when `audioStoragePath` was written. */
+  audioStoredAt?: Timestamp
   createdAt: Timestamp
   createdBy: string
 }

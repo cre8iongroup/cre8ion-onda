@@ -18,6 +18,14 @@ service firebase.storage {
       allow write: if false; // Cloud Functions only
     }
 
+    // Session audio from Recall (server-side retrieve on sdk_upload.complete).
+    // Path: shows/{showId}/sessions/{sessionId}/audio/{recordingId}.mp3
+    // Writable only by Admin SDK (webhook / Cloud Functions). Client writes denied.
+    match /shows/{showId}/sessions/{sessionId}/audio/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // PWA icons — public read, admin write only
     match /icons/{fileName} {
       allow read: if true;

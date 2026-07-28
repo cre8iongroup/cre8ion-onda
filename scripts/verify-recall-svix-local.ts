@@ -1,18 +1,21 @@
 /**
- * Local verification for POST /api/recall/webhook (Svix path).
+ * Local verification for POST /api/recall/webhook (Svix path) including
+ * server-side Recall audio retrieve → Storage path wiring.
  *
  * Does NOT require a live Recall domain, Firebase credentials, or App Hosting.
  * Spins a tiny HTTP server that wraps the same `handleWorkspaceRecallWebhook`
- * used by `app/api/recall/webhook/route.ts`, posts three signed cases, exits
+ * used by `app/api/recall/webhook/route.ts`, posts signed cases, exits
  * non-zero on failure.
  *
  * Usage:
  *   npx tsx scripts/verify-recall-svix-local.ts
  *
- * Not part of the production app — delete or leave as a one-shot check.
+ * For a fuller path (mock Recall HTTP + Firebase Storage emulator upload), see:
+ *   npx tsx scripts/verify-recall-audio-store-local.ts
  */
 import http from 'http'
 import { Webhook } from 'svix'
+import { RecallAudioRetrieveError } from '../lib/recall/retrieveAndStoreAudio'
 import {
   __setWorkspaceWebhookTestDeps,
   handleWorkspaceRecallWebhook,
@@ -80,8 +83,15 @@ async function main() {
     sessionId: string
     showId?: string | null
     recordingId?: string | null
+    audioStoragePath?: string | null
     reason: string
   }> = []
+  const audioCalls: Array<{
+    showId: string
+    sessionId: string
+    recordingId: string
+  }> = []
+  let audioShouldFail = false
 
   __setWorkspaceWebhookTestDeps({
     resolveSessionIdFromRecordingId: async (recordingId) => {
@@ -89,6 +99,26 @@ async function main() {
         return { sessionId: 'sess_local_1', showId: 'show_local_1' }
       }
       return null
+    },
+    retrieveAndStoreRecallAudio: async (opts) => {
+      audioCalls.push({
+        showId: opts.showId,
+        sessionId: opts.sessionId,
+        recordingId: opts.recordingId,
+      })
+      if (audioShouldFail) {
+        throw new RecallAudioRetrieveError(
+          'no_audio_url',
+          'simulated missing audio URL',
+        )
+      }
+      const storagePath = `shows/${opts.showId}/sessions/${opts.sessionId}/audio/${opts.recordingId}.mp3`
+      return {
+        storagePath,
+        bytes: 128,
+        contentType: 'audio/mpeg',
+        audioUrlHost: 'mock.recall.test',
+      }
     },
     markSessionEndedFromRecall: async (opts) => {
       endedCalls.push(opts)
@@ -132,9 +162,11 @@ async function main() {
 
   const results: CaseResult[] = []
 
-  // ── (a) valid signature + known recordingId → ended
+  // ── (a) valid signature + known recordingId + audio ok → ended + path
   {
     endedCalls.length = 0
+    audioCalls.length = 0
+    audioShouldFail = false
     const body = sdkUploadCompleteBody('rec_known_local')
     const sig = sign(body)
     const { status, json } = await post(port, body, {
@@ -142,24 +174,31 @@ async function main() {
       'svix-timestamp': sig.timestamp,
       'svix-signature': sig.signature,
     })
+    const expectedPath =
+      'shows/show_local_1/sessions/sess_local_1/audio/rec_known_local.mp3'
     const pass =
       status === 200 &&
       json.ended === true &&
       json.sessionId === 'sess_local_1' &&
+      json.audioStoragePath === expectedPath &&
+      audioCalls.length === 1 &&
       endedCalls.length === 1 &&
       endedCalls[0].sessionId === 'sess_local_1' &&
       endedCalls[0].showId === 'show_local_1' &&
+      endedCalls[0].audioStoragePath === expectedPath &&
       endedCalls[0].reason === 'sdk_upload.complete'
     results.push({
-      name: '(a) valid signature + known recordingId → session ended',
+      name: '(a) valid signature + known recordingId → audio stored + session ended',
       pass,
-      detail: JSON.stringify({ status, json, endedCalls }),
+      detail: JSON.stringify({ status, json, endedCalls, audioCalls }),
     })
   }
 
   // ── (b) invalid signature → rejected
   {
     endedCalls.length = 0
+    audioCalls.length = 0
+    audioShouldFail = false
     const body = sdkUploadCompleteBody('rec_known_local')
     const sig = sign(body)
     const { status, json } = await post(port, body, {
@@ -170,17 +209,20 @@ async function main() {
     const pass =
       status === 401 &&
       endedCalls.length === 0 &&
+      audioCalls.length === 0 &&
       (json.code === 'invalid_signature' || typeof json.error === 'string')
     results.push({
       name: '(b) invalid signature → rejected (401)',
       pass,
-      detail: JSON.stringify({ status, json, endedCalls }),
+      detail: JSON.stringify({ status, json, endedCalls, audioCalls }),
     })
   }
 
   // ── (c) valid signature + unknown recordingId → loud 422, no silent no-op
   {
     endedCalls.length = 0
+    audioCalls.length = 0
+    audioShouldFail = false
     const body = sdkUploadCompleteBody('rec_UNKNOWN_no_index')
     const sig = sign(body)
     const { status, json } = await post(port, body, {
@@ -192,11 +234,38 @@ async function main() {
       status === 422 &&
       json.code === 'recording_index_miss' &&
       json.flag === 'recall_lifecycle_session_resolution' &&
-      endedCalls.length === 0
+      endedCalls.length === 0 &&
+      audioCalls.length === 0
     results.push({
       name: '(c) valid signature + unknown recordingId → loud 422 (no silent no-op)',
       pass,
-      detail: JSON.stringify({ status, json, endedCalls }),
+      detail: JSON.stringify({ status, json, endedCalls, audioCalls }),
+    })
+  }
+
+  // ── (d) audio retrieve fails → loud 502, session NOT ended
+  {
+    endedCalls.length = 0
+    audioCalls.length = 0
+    audioShouldFail = true
+    const body = sdkUploadCompleteBody('rec_known_local')
+    const sig = sign(body)
+    const { status, json } = await post(port, body, {
+      'svix-id': sig.id,
+      'svix-timestamp': sig.timestamp,
+      'svix-signature': sig.signature,
+    })
+    const pass =
+      status === 502 &&
+      json.flag === 'recall_audio_retrieve_store' &&
+      typeof json.code === 'string' &&
+      String(json.code).startsWith('recall_audio_') &&
+      audioCalls.length === 1 &&
+      endedCalls.length === 0
+    results.push({
+      name: '(d) audio retrieve failure → loud 502, session NOT ended',
+      pass,
+      detail: JSON.stringify({ status, json, endedCalls, audioCalls }),
     })
   }
 
@@ -217,7 +286,7 @@ async function main() {
     console.error('One or more cases failed')
     process.exit(1)
   }
-  console.log('All three local Svix verification cases passed.')
+  console.log('All local Svix verification cases passed (incl. audio retrieve wiring).')
 }
 
 main().catch((err) => {

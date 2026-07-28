@@ -4,11 +4,20 @@
  * Auth: Svix only (RECALL_SVIX_SIGNING_SECRET). Never x-recall-secret —
  * that header is for the Electron per-session forwarder at /api/webhook/[sessionId].
  *
- * sdk_upload.complete → resolve session via recordingIndex/{recordingId} only,
- * then markSessionEndedFromRecall (same outcome as the Electron forwarder).
+ * sdk_upload.complete →
+ *   1. resolve session via recordingIndex/{recordingId} only
+ *   2. Retrieve Recording + upload audio to Firebase Storage
+ *   3. markSessionEndedFromRecall (lifecycle ended + audioStoragePath on session)
+ *
+ * Electron's local download is unchanged — this is an independent server path.
  */
 import { pushRtdbJson } from '@/lib/firebase/admin'
 import { normalizeToOndaPayload } from '@/lib/recall/normalizeTranscript'
+import {
+  RecallAudioRetrieveError,
+  retrieveAndStoreRecallAudio,
+  type RetrieveAndStoreAudioResult,
+} from '@/lib/recall/retrieveAndStoreAudio'
 import { verifyRecallSvixPayload, SvixVerificationError } from '@/lib/recall/verifySvix'
 import {
   markSessionEndedFromRecall,
@@ -18,6 +27,7 @@ import {
 export type WorkspaceWebhookDeps = {
   resolveSessionIdFromRecordingId: typeof resolveSessionIdFromRecordingId
   markSessionEndedFromRecall: typeof markSessionEndedFromRecall
+  retrieveAndStoreRecallAudio: typeof retrieveAndStoreRecallAudio
   pushRtdbJson: typeof pushRtdbJson
   verify: typeof verifyRecallSvixPayload
 }
@@ -25,6 +35,7 @@ export type WorkspaceWebhookDeps = {
 const defaultDeps: WorkspaceWebhookDeps = {
   resolveSessionIdFromRecordingId,
   markSessionEndedFromRecall,
+  retrieveAndStoreRecallAudio,
   pushRtdbJson,
   verify: verifyRecallSvixPayload,
 }
@@ -43,6 +54,8 @@ function deps(): WorkspaceWebhookDeps {
       defaultDeps.resolveSessionIdFromRecordingId,
     markSessionEndedFromRecall:
       testDeps?.markSessionEndedFromRecall ?? defaultDeps.markSessionEndedFromRecall,
+    retrieveAndStoreRecallAudio:
+      testDeps?.retrieveAndStoreRecallAudio ?? defaultDeps.retrieveAndStoreRecallAudio,
     pushRtdbJson: testDeps?.pushRtdbJson ?? defaultDeps.pushRtdbJson,
     verify: testDeps?.verify ?? defaultDeps.verify,
   }
@@ -101,7 +114,6 @@ export async function handleWorkspaceRecallWebhook(opts: {
   if (event?.startsWith('sdk_upload.')) {
     const data = (bodyObj.data ?? {}) as Record<string, unknown>
     const recording = (data.recording ?? {}) as Record<string, unknown>
-    const sdkUpload = (data.sdk_upload ?? {}) as Record<string, unknown>
     const recordingId = typeof recording.id === 'string' ? recording.id : null
 
     console.info('[recall/webhook] lifecycle', { event, recordingId })
@@ -145,20 +157,70 @@ export async function handleWorkspaceRecallWebhook(opts: {
         }
       }
 
+      let stored: RetrieveAndStoreAudioResult
+      try {
+        stored = await d.retrieveAndStoreRecallAudio({
+          showId: resolved.showId,
+          sessionId: resolved.sessionId,
+          recordingId,
+        })
+      } catch (err) {
+        const code =
+          err instanceof RecallAudioRetrieveError ? err.code : 'retrieve_failed'
+        const detail = err instanceof RecallAudioRetrieveError ? err.detail : undefined
+        console.error(
+          '[recall/webhook] LOUD FAILURE: server-side Recall audio retrieve/store failed — NOT marking session ended (no silent empty audio).',
+          {
+            recordingId,
+            sessionId: resolved.sessionId,
+            showId: resolved.showId,
+            code,
+            message: err instanceof Error ? err.message : String(err),
+            detail,
+            flag: 'recall_audio_retrieve_store',
+          },
+        )
+        return {
+          status: 502,
+          body: {
+            error:
+              err instanceof Error
+                ? err.message
+                : 'Recall audio retrieve/store failed',
+            code: `recall_audio_${code}`,
+            recordingId,
+            sessionId: resolved.sessionId,
+            showId: resolved.showId,
+            flag: 'recall_audio_retrieve_store',
+          },
+        }
+      }
+
       const result = await d.markSessionEndedFromRecall({
         sessionId: resolved.sessionId,
         showId: resolved.showId,
         recordingId,
+        audioStoragePath: stored.storagePath,
         reason: event,
       })
 
-      console.info('[recall/webhook] session ended via Svix sdk_upload.complete', {
+      console.info('[recall/webhook] session ended + audio stored via Svix sdk_upload.complete', {
         recordingId,
         sessionId: result.sessionId,
         showId: result.showId,
+        audioStoragePath: stored.storagePath,
+        audioBytes: stored.bytes,
       })
 
-      return { status: 200, body: { ended: true, ...result } }
+      return {
+        status: 200,
+        body: {
+          ended: true,
+          ...result,
+          audioStoragePath: stored.storagePath,
+          audioBytes: stored.bytes,
+        },
+      }
     }
 
     return {

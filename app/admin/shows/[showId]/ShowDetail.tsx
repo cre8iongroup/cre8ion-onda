@@ -8,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  updateDoc,
   type Timestamp,
 } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
@@ -15,6 +16,11 @@ import { useAuthContext } from '@/context/AuthContext'
 import type { SessionDoc, ShowDoc, WithId } from '@/types'
 import CreateSessionModal from './CreateSessionModal'
 import TechCredentialPanel from './TechCredentialPanel'
+import {
+  canHideSession,
+  sessionStatusBadgeClass,
+  sessionStatusLabel,
+} from '@/lib/sessionStatus'
 
 function formatDateRange(start?: Timestamp, end?: Timestamp): string {
   if (!start || !end) return 'Dates TBD'
@@ -32,22 +38,6 @@ function formatDateTime(ts?: Timestamp): string {
   })
 }
 
-function statusBadgeClass(status: SessionDoc['lifecycleStatus']): string {
-  switch (status) {
-    case 'live':
-      return 'badge-live'
-    case 'published':
-    case 'approved':
-      return 'badge-success'
-    case 'ready':
-      return 'badge-info'
-    case 'underReview':
-      return 'badge-warning'
-    default:
-      return 'badge-muted'
-  }
-}
-
 export default function ShowDetail({ showId }: { showId: string }) {
   const { user, capabilities } = useAuthContext()
   const [show, setShow] = useState<WithId<ShowDoc> | null>(null)
@@ -57,8 +47,39 @@ export default function ShowDetail({ showId }: { showId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [flash, setFlash] = useState<string | null>(null)
+  const [draftBusyId, setDraftBusyId] = useState<string | null>(null)
+  const [draftError, setDraftError] = useState<string | null>(null)
 
   const canCreate = Boolean(capabilities?.canCreateShows || capabilities?.canEditShows)
+  const canEditSessions = canCreate
+
+  async function toggleDraft(session: WithId<SessionDoc>) {
+    setDraftError(null)
+    const nextDraft = !session.isDraft
+    if (nextDraft && !canHideSession(session.feedState)) {
+      setDraftError(
+        `“${session.friendlyName || session.title}”: End the session before hiding it.`,
+      )
+      return
+    }
+    setDraftBusyId(session.id)
+    try {
+      const fs = getClientFirestore()
+      await updateDoc(doc(fs, 'shows', showId, 'sessions', session.id), {
+        isDraft: nextDraft,
+      })
+      setFlash(
+        nextDraft
+          ? 'Session hidden from Onda Operator and attendees.'
+          : 'Session visible to Onda Operator and attendees.',
+      )
+    } catch (err: any) {
+      console.error('ShowDetail: isDraft toggle failed', err)
+      setDraftError(err?.message || 'Failed to update draft visibility.')
+    } finally {
+      setDraftBusyId(null)
+    }
+  }
 
   useEffect(() => {
     const fs = getClientFirestore()
@@ -196,6 +217,12 @@ export default function ShowDetail({ showId }: { showId: string }) {
         </div>
       )}
 
+      {draftError && (
+        <div className="alert alert-error" role="alert" style={{ marginBottom: 'var(--space-6)' }}>
+          {draftError}
+        </div>
+      )}
+
       <section style={{ marginBottom: 'var(--space-10)' }}>
         <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Tech access</h2>
         <TechCredentialPanel
@@ -260,11 +287,35 @@ export default function ShowDetail({ showId }: { showId: string }) {
                       {formatDateTime(session.scheduledStart)} – {formatDateTime(session.scheduledEnd)}
                     </p>
                   </div>
-                  <div className="flex gap-2" style={{ alignItems: 'center' }}>
-                    <span className={`badge ${statusBadgeClass(session.lifecycleStatus)}`}>
-                      {session.lifecycleStatus}
+                  <div className="flex gap-2" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span
+                      className={`badge ${sessionStatusBadgeClass({
+                        isDraft: session.isDraft,
+                        feedState: session.feedState,
+                      })}`}
+                    >
+                      {sessionStatusLabel(
+                        { isDraft: session.isDraft, feedState: session.feedState },
+                        'admin',
+                      )}
                     </span>
-                    <span className="badge badge-muted">{session.feedState}</span>
+                    {canEditSessions ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={draftBusyId === session.id}
+                        title={
+                          session.isDraft
+                            ? 'Make visible to Onda Operator and attendees'
+                            : canHideSession(session.feedState)
+                              ? 'Hide from Onda Operator and attendees'
+                              : 'End the session before hiding it'
+                        }
+                        onClick={() => toggleDraft(session)}
+                      >
+                        {session.isDraft ? 'Make visible' : 'Hide'}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </article>

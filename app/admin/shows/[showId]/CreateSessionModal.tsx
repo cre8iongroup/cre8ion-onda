@@ -100,7 +100,7 @@ export default function CreateSessionModal({
         scheduledStart: Timestamp.fromDate(new Date(values.scheduledStart)),
         scheduledEnd: Timestamp.fromDate(new Date(values.scheduledEnd)),
         languages: defaultLanguages.length ? defaultLanguages : ['en'],
-        lifecycleStatus: 'preproduction',
+        isDraft: true,
         feedState: 'standby',
         approvalState: {},
         createdAt: Timestamp.now(),

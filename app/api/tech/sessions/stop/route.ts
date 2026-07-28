@@ -5,9 +5,8 @@ import { assertCorrectFirebaseProject } from '@/lib/firebase/admin'
 /**
  * POST /api/tech/sessions/stop
  *
- * Body: { credential, showId, sessionId }
- * Marks intermediate lifecycleStatus=stopping (NOT ended). Ended is applied
- * later by the Recall upload-complete webhook path.
+ * Marks feedState=stopping immediately (NOT ended). Ended is applied
+ * when Recall upload-complete lands on the webhook.
  */
 export async function POST(request: NextRequest) {
   try {

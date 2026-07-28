@@ -13,7 +13,7 @@ const firestore = admin.firestore()
  *   2. Finds the parent show via collectionGroup query on sessions
  *   3. Writes all chunks to Firestore at shows/{showId}/sessions/{sessionId}/transcripts/
  *      ordered by sequenceNumber
- *   4. Advances session lifecycleStatus to 'ended'
+ *   4. Sets session feedState to 'ended'
  *   5. Deletes the /liveSessions/{sessionId} RTDB node (cleanup)
  *   6. Writes an audit log entry
  */
@@ -84,9 +84,8 @@ export const onSessionEnd = functions.database
         })
       }
 
-      // ── 4. Update session lifecycleStatus to 'ended'
+      // ── 4. Update session feedState to 'ended'
       await sessionRef.update({
-        lifecycleStatus: 'ended',
         feedState: 'ended',
       })
 

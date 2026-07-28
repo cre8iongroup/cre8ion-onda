@@ -1,10 +1,12 @@
 /**
- * Server-side session lifecycle helpers for the Electron Tech Operator flow.
+ * Server-side session helpers for Onda Operator (Electron).
  *
  * Electron never writes Firestore/RTDB directly — it calls API routes that use
  * these helpers (Admin SDK). Authoritative `ended` is applied when Recall's
  * upload-complete signal lands on the webhook, which sets RTDB feedState →
- * `ended` and lets onSessionEnd migrate transcripts + set Firestore status.
+ * `ended` and lets onSessionEnd migrate transcripts.
+ *
+ * Live machine: standby → testing → live → stopping → ended (isDraft separate).
  */
 
 import { FieldPath, FieldValue, type DocumentReference } from 'firebase-admin/firestore'
@@ -14,15 +16,15 @@ import {
   setRtdbJson,
   updateRtdbJson,
 } from '@/lib/firebase/admin'
-import type { LifecycleStatus, SessionDoc, ShowDoc } from '@/types'
+import type { FeedState, SessionDoc, ShowDoc } from '@/types'
 
 export type SessionSummary = {
   id: string
   title: string
   friendlyName: string
   location: string
-  lifecycleStatus: LifecycleStatus
-  feedState: SessionDoc['feedState']
+  isDraft: boolean
+  feedState: FeedState
   scheduledStart: string | null
   scheduledEnd: string | null
 }
@@ -45,6 +47,16 @@ export class TechLifecycleError extends Error {
   }
 }
 
+function asFeedState(value: unknown): FeedState {
+  const allowed: FeedState[] = ['standby', 'testing', 'live', 'stopping', 'ended']
+  if (typeof value === 'string' && (allowed as string[]).includes(value)) {
+    return value as FeedState
+  }
+  // Legacy `paused` (pre–Slice 2B) maps to stopping
+  if (value === 'paused') return 'stopping'
+  return 'standby'
+}
+
 function sessionSummaryFromDoc(
   id: string,
   data: Record<string, any>,
@@ -61,8 +73,8 @@ function sessionSummaryFromDoc(
           ? data.title
           : id,
     location: typeof data.location === 'string' ? data.location : '',
-    lifecycleStatus: (data.lifecycleStatus as LifecycleStatus) ?? 'preproduction',
-    feedState: data.feedState ?? 'standby',
+    isDraft: data.isDraft === true,
+    feedState: asFeedState(data.feedState),
     scheduledStart: scheduledStart ? scheduledStart.toISOString() : null,
     scheduledEnd: scheduledEnd ? scheduledEnd.toISOString() : null,
   }
@@ -100,6 +112,8 @@ export async function unlockShowByCredential(
   const sessionsSnap = await showDoc.ref.collection('sessions').get()
   const sessions = sessionsSnap.docs
     .map((d) => sessionSummaryFromDoc(d.id, d.data()))
+    // Onda Operator never sees drafts
+    .filter((s) => !s.isDraft)
     .sort((a, b) => {
       const aT = a.scheduledStart ?? ''
       const bT = b.scheduledStart ?? ''
@@ -156,8 +170,7 @@ async function loadSession(
 }
 
 /**
- * Mark session live (Firestore + RTDB). Rejects if already live/stopping.
- * Electron must call this successfully before starting the Recall SDK.
+ * Start sound check: feedState → testing + operator starts Recall after this succeeds.
  */
 export async function startSession(opts: {
   showId: string
@@ -166,44 +179,34 @@ export async function startSession(opts: {
 }): Promise<{ session: SessionSummary; webhookPath: string }> {
   const showRef = await requireShowCredential(opts.showId, opts.credential)
   const { ref: sessionRef, data, summary } = await loadSession(showRef, opts.sessionId)
+  const feedState = asFeedState(data.feedState)
 
-  if (data.lifecycleStatus === 'live' || data.feedState === 'live') {
+  if (data.isDraft === true) {
     throw new TechLifecycleError(
       409,
-      'already_live',
-      `Session is already live (lifecycle=${data.lifecycleStatus}, feed=${data.feedState}). ` +
-        'Another operator may have this session active.',
+      'session_draft',
+      'Session is still a draft — make it visible in Admin before sound check.',
     )
   }
-  if (data.lifecycleStatus === 'stopping') {
+  if (feedState !== 'standby') {
     throw new TechLifecycleError(
       409,
-      'stopping_in_progress',
-      'Session is still stopping — wait for Recall upload to finish (ended) before restarting.',
-    )
-  }
-  if (['underReview', 'approved', 'published'].includes(data.lifecycleStatus)) {
-    throw new TechLifecycleError(
-      409,
-      'not_startable',
-      `Session lifecycleStatus="${data.lifecycleStatus}" cannot go live from Electron.`,
+      'not_standby',
+      `Sound check requires feedState=standby (got ${feedState}).`,
     )
   }
 
-  await sessionRef.update({
-    lifecycleStatus: 'live',
-    feedState: 'live',
-  })
+  await sessionRef.update({ feedState: 'testing' })
 
   await setRtdbJson(`liveSessions/${opts.sessionId}`, {
-    feedState: 'live',
+    feedState: 'testing',
     showId: opts.showId,
     startedAt: Date.now(),
   })
 
   await getAdminFirestore().collection('auditLog').add({
-    action: 'SESSION_FEED_GO_LIVE',
-    performedBy: 'electron-tech',
+    action: 'SESSION_SOUND_CHECK_STARTED',
+    performedBy: 'onda-operator',
     performedAt: FieldValue.serverTimestamp(),
     showId: opts.showId,
     sessionId: opts.sessionId,
@@ -211,14 +214,57 @@ export async function startSession(opts: {
   })
 
   return {
-    session: { ...summary, lifecycleStatus: 'live', feedState: 'live' },
+    session: { ...summary, isDraft: false, feedState: 'testing' },
     webhookPath: `/api/webhook/${opts.sessionId}`,
   }
 }
 
 /**
- * Operator pressed Stop. Sets intermediate `stopping` + feed `paused`.
- * Does NOT set `ended` — that waits for Recall upload-complete webhook.
+ * Go Live: feedState testing → live only. Does not touch Recall recording.
+ */
+export async function goLiveSession(opts: {
+  showId: string
+  sessionId: string
+  credential: string
+}): Promise<{ session: SessionSummary }> {
+  const showRef = await requireShowCredential(opts.showId, opts.credential)
+  const { ref: sessionRef, data, summary } = await loadSession(showRef, opts.sessionId)
+  const feedState = asFeedState(data.feedState)
+
+  if (data.isDraft === true) {
+    throw new TechLifecycleError(409, 'session_draft', 'Session is a draft')
+  }
+  if (feedState !== 'testing') {
+    throw new TechLifecycleError(
+      409,
+      'not_testing',
+      `Go Live requires feedState=testing (got ${feedState}). Run sound check first.`,
+    )
+  }
+
+  await sessionRef.update({ feedState: 'live' })
+  await updateRtdbJson(`liveSessions/${opts.sessionId}`, {
+    feedState: 'live',
+    wentLiveAt: Date.now(),
+  })
+
+  await getAdminFirestore().collection('auditLog').add({
+    action: 'SESSION_FEED_GO_LIVE',
+    performedBy: 'onda-operator',
+    performedAt: FieldValue.serverTimestamp(),
+    showId: opts.showId,
+    sessionId: opts.sessionId,
+    metadata: { source: 'goLiveSession' },
+  })
+
+  return {
+    session: { ...summary, isDraft: false, feedState: 'live' },
+  }
+}
+
+/**
+ * Operator pressed End. Sets feedState → stopping immediately (not ended).
+ * Ended waits for Recall upload-complete webhook.
  */
 export async function stopSession(opts: {
   showId: string
@@ -226,20 +272,26 @@ export async function stopSession(opts: {
   credential: string
 }): Promise<{ session: SessionSummary }> {
   const showRef = await requireShowCredential(opts.showId, opts.credential)
-  const { ref: sessionRef, summary } = await loadSession(showRef, opts.sessionId)
+  const { ref: sessionRef, data, summary } = await loadSession(showRef, opts.sessionId)
+  const feedState = asFeedState(data.feedState)
 
-  await sessionRef.update({
-    lifecycleStatus: 'stopping',
-    feedState: 'paused',
-  })
+  if (feedState !== 'live' && feedState !== 'testing') {
+    throw new TechLifecycleError(
+      409,
+      'not_stoppable',
+      `End session requires feedState=live or testing (got ${feedState}).`,
+    )
+  }
+
+  await sessionRef.update({ feedState: 'stopping' })
 
   await updateRtdbJson(`liveSessions/${opts.sessionId}`, {
-    feedState: 'paused',
+    feedState: 'stopping',
     stoppingAt: Date.now(),
   })
 
   return {
-    session: { ...summary, lifecycleStatus: 'stopping', feedState: 'paused' },
+    session: { ...summary, feedState: 'stopping' },
   }
 }
 
@@ -312,20 +364,12 @@ export async function resolveSessionIdFromRecordingId(
 
 /**
  * Mark session ended via RTDB feedState. Triggers onSessionEnd CF which
- * migrates chunks and sets Firestore lifecycleStatus=ended.
- *
- * Also writes Firestore directly so local spike (CF not deployed) still flips
- * lifecycle to ended for operator verification.
+ * migrates chunks. Also writes Firestore feedState=ended for local spike.
  */
 export async function markSessionEndedFromRecall(opts: {
   sessionId: string
   showId?: string | null
   recordingId?: string | null
-  /**
-   * Firebase Storage object path for the server-retrieved Recall audio.
-   * Canonical: shows/{showId}/sessions/{sessionId}/audio/{recordingId}.mp3
-   * Written so Review can locate the file later (`SessionDoc.audioStoragePath`).
-   */
   audioStoragePath?: string | null
   reason: string
 }): Promise<{ ok: true; sessionId: string; showId: string | null }> {
@@ -352,7 +396,6 @@ export async function markSessionEndedFromRecall(opts: {
 
   const firestore = getAdminFirestore()
   const sessionPatch: Record<string, unknown> = {
-    lifecycleStatus: 'ended',
     feedState: 'ended',
   }
   if (opts.recordingId) sessionPatch.recordingId = opts.recordingId
@@ -364,7 +407,6 @@ export async function markSessionEndedFromRecall(opts: {
   if (showId) {
     await firestore.doc(`shows/${showId}/sessions/${sessionId}`).update(sessionPatch)
   } else {
-    // Fallback: collectionGroup by document id (last path segment)
     const sessionsQuery = await firestore
       .collectionGroup('sessions')
       .where(FieldPath.documentId(), '==', sessionId)

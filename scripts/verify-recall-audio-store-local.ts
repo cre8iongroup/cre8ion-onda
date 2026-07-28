@@ -240,8 +240,8 @@ async function seedSessionDocs(recordingId: string) {
       location: 'Lab',
       friendlyName: 'Audio Verify',
       languages: ['en'],
-      lifecycleStatus: 'stopping',
-      feedState: 'paused',
+      isDraft: false,
+      feedState: 'stopping',
       approvalState: {},
       createdAt: FieldValue.serverTimestamp(),
       createdBy: 'verify-recall-audio-store-local',
@@ -260,7 +260,7 @@ async function seedSessionDocs(recordingId: string) {
 
   await setRtdbJson(`liveSessions/${SESSION_ID}`, {
     showId: SHOW_ID,
-    feedState: 'paused',
+    feedState: 'stopping',
     recordingId,
   })
 }
@@ -374,8 +374,8 @@ async function main() {
 
   // Reset session to stopping so ended transition is observable
   await getAdminFirestore().doc(`shows/${SHOW_ID}/sessions/${SESSION_ID}`).update({
-    lifecycleStatus: 'stopping',
-    feedState: 'paused',
+    isDraft: false,
+    feedState: 'stopping',
     audioStoragePath: FieldValue.delete(),
     recordingId: FieldValue.delete(),
   })
@@ -409,15 +409,15 @@ async function main() {
   const snap = await getAdminFirestore().doc(`shows/${SHOW_ID}/sessions/${SESSION_ID}`).get()
   const data = snap.data() || {}
   console.log('[verify-audio] Firestore session fields', {
-    lifecycleStatus: data.lifecycleStatus,
+    isDraft: data.isDraft,
     feedState: data.feedState,
     recordingId: data.recordingId,
     audioStoragePath: data.audioStoragePath,
     audioStoredAt: data.audioStoredAt ?? null,
   })
 
-  if (data.lifecycleStatus !== 'ended') {
-    throw new Error(`Expected lifecycleStatus=ended, got ${data.lifecycleStatus}`)
+  if (data.feedState !== 'ended') {
+    throw new Error(`Expected feedState=ended, got ${data.feedState}`)
   }
   if (data.audioStoragePath !== expectedPath) {
     throw new Error(`Expected audioStoragePath=${expectedPath}, got ${data.audioStoragePath}`)

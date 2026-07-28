@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { TechLifecycleError, startSession } from '@/lib/tech/sessionLifecycle'
+import { TechLifecycleError, goLiveSession } from '@/lib/tech/sessionLifecycle'
 import { assertCorrectFirebaseProject } from '@/lib/firebase/admin'
 
 /**
- * POST /api/tech/sessions/start
+ * POST /api/tech/sessions/go-live
  *
  * Body: { credential, showId, sessionId }
- * Starts sound check: feedState → testing (Admin SDK). Electron then starts Recall.
+ * feedState testing → live only. Does not start/stop Recall.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -32,13 +32,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await startSession({ credential, showId, sessionId })
+    const result = await goLiveSession({ credential, showId, sessionId })
     return NextResponse.json(result, { status: 200 })
   } catch (err) {
     if (err instanceof TechLifecycleError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.status })
     }
-    console.error('[tech/sessions/start] failed', err)
+    console.error('[tech/sessions/go-live] failed', err)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }

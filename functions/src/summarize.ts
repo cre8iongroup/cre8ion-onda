@@ -43,7 +43,8 @@ Rules:
  *
  * Reads all Firestore transcript chunks for a session (sorted by sequenceNumber),
  * sends to Claude, and writes the structured summary back to the session document.
- * Advances lifecycleStatus from 'ended' to 'underReview'.
+ * Sends to Claude, and writes the structured summary back to the session document.
+ * Reviewer/posting pipeline status is a future field — do not write lifecycleStatus.
  */
 export const summarizeSession = functions.https.onCall(async (data: SummarizeRequest, context) => {
   // ── 1. Auth check — must be authenticated with admin or editor role
@@ -125,7 +126,7 @@ export const summarizeSession = functions.https.onCall(async (data: SummarizeReq
     aiSummary: JSON.stringify(summary),
     aiSummaryGeneratedAt: admin.firestore.FieldValue.serverTimestamp(),
     aiSummaryTriggeredBy: context.auth.uid,
-    lifecycleStatus: 'underReview',
+    // TODO(reviewer-pipeline): future Reviewer/posting status field — not feedState
   })
 
   // ── 7. Audit log

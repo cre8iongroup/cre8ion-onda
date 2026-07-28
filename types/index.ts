@@ -83,7 +83,7 @@ export interface ShowDoc {
   defaultLanguages: string[]  // e.g. ['en', 'es', 'pt', 'fr']
   portalPublished: boolean
   /**
-   * Shared Tech Operator / Electron unlock password for this show (v1).
+   * Shared Onda Operator / Electron unlock password for this show (v1).
    * Auth email is derived as tech+{portalSlug}@onda.tech — see lib/tech/credentials.ts.
    * Prefer setting via Admin UI so the matching Auth user is provisioned.
    * Validated server-side via Admin SDK — never returned to clients after unlock.
@@ -98,18 +98,12 @@ export interface ShowDoc {
 // Sessions
 // ─────────────────────────────────────────────
 
-export type LifecycleStatus =
-  | 'preproduction'
-  | 'ready'
-  | 'live'
-  /** Operator pressed stop; waiting for Recall upload/complete before `ended`. */
-  | 'stopping'
-  | 'ended'
-  | 'underReview'
-  | 'approved'
-  | 'published'
-
-export type FeedState = 'standby' | 'live' | 'paused' | 'ended'
+/**
+ * Live-session machine for Onda Operator / Attendee / Admin labels.
+ * One-way: standby → testing → live → stopping → ended.
+ * UI may label `testing` as "Sound check" in Operator — enum value stays `testing`.
+ */
+export type FeedState = 'standby' | 'testing' | 'live' | 'stopping' | 'ended'
 
 export interface ApprovalState {
   reviewedBy?: string
@@ -128,7 +122,11 @@ export interface SessionDoc {
   scheduledEnd: Timestamp
   languages: string[]
   glossaryOverride?: GlossaryEntry[]
-  lifecycleStatus: LifecycleStatus
+  /**
+   * Admin visibility gate. true = hidden from Onda Operator + Attendee PWA.
+   * Defaults true on create. Hide blocked while feedState is testing/live/stopping.
+   */
+  isDraft: boolean
   feedState: FeedState
   approvalState: ApprovalState
   aiSummary?: string        // Markdown from Claude
@@ -221,6 +219,7 @@ export interface OutputLayoutDoc {
 // ─────────────────────────────────────────────
 
 export type AuditAction =
+  | 'SESSION_SOUND_CHECK_STARTED'
   | 'SESSION_FEED_GO_LIVE'
   | 'SESSION_FEED_PAUSED'
   | 'SESSION_FEED_STOPPED'

@@ -12,7 +12,7 @@ import { handleWorkspaceRecallWebhook } from '@/lib/recall/workspaceWebhook'
  *
  * sdk_upload.complete → recordingIndex/{recordingId} → Retrieve Recording →
  * Firebase Storage (shows/{showId}/sessions/{sessionId}/audio/{recordingId}.mp3) →
- * markSessionEndedFromRecall (lifecycleStatus + SessionDoc.audioStoragePath).
+ * markSessionEndedFromRecall (feedState + SessionDoc.audioStoragePath).
  * Electron local download is unchanged — this is an independent server path.
  */
 export async function POST(request: NextRequest) {

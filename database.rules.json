@@ -13,6 +13,7 @@
         "chunks": {
           ".read": true,
           ".write": false,
+          ".indexOn": ["timestamp"],
           "$chunkId": {
             ".validate": "newData.hasChildren(['text', 'sequenceNumber', 'timestamp', 'isFinalized'])"
           }

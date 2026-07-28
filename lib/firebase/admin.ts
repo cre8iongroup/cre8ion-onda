@@ -42,6 +42,7 @@ import { getAuth, type Auth } from 'firebase-admin/auth'
 import { getStorage, type Storage } from 'firebase-admin/storage'
 import { GoogleAuth, JWT } from 'google-auth-library'
 import { readFileSync } from 'fs'
+import { isLiveSessionChunksPath } from '@/lib/rtdbPaths'
 
 /**
  * Scopes required by the Realtime Database REST API for admin (rules-bypass) access.
@@ -235,10 +236,26 @@ function rtdbBaseUrl(): string {
   if (!databaseURL) {
     throw new Error('[firebase-admin] NEXT_PUBLIC_FIREBASE_DATABASE_URL is required')
   }
+  let parsed: URL
+  try {
+    parsed = new URL(databaseURL)
+  } catch {
+    throw new Error(
+      `[firebase-admin] NEXT_PUBLIC_FIREBASE_DATABASE_URL is not a valid URL: ${JSON.stringify(databaseURL)}`,
+    )
+  }
+  // Must be DB root (host only). A path suffix would nest writes under an unexpected prefix.
+  if (parsed.pathname && parsed.pathname !== '/') {
+    throw new Error(
+      `[firebase-admin] NEXT_PUBLIC_FIREBASE_DATABASE_URL must be the database root ` +
+        `(no path). Got pathname=${JSON.stringify(parsed.pathname)}. ` +
+        `Example: https://cre8ion-onda-default-rtdb.firebaseio.com`,
+    )
+  }
   const emulatorHost = process.env.FIREBASE_DATABASE_EMULATOR_HOST?.trim()
   if (emulatorHost) {
     // Emulator: http://host:port/{namespace}
-    const namespace = new URL(databaseURL).host.split('.')[0]
+    const namespace = parsed.host.split('.')[0]
     return `http://${emulatorHost}/${namespace}`
   }
   return databaseURL.replace(/\/$/, '')
@@ -300,6 +317,17 @@ async function rtdbRestWrite(
 
   const timeoutMs = opts?.timeoutMs ?? 15_000
   const normalizedPath = path.replace(/^\/+|\/+$/g, '')
+
+  // Guard: transcript chunk list writes must never land at root `{sessionId}/chunks`.
+  if (method === 'POST' && /(^|\/)chunks$/.test(normalizedPath)) {
+    if (!isLiveSessionChunksPath(normalizedPath)) {
+      throw new Error(
+        `[rtdb-rest] refusing chunk write outside liveSessions/{sessionId}/chunks: ` +
+          JSON.stringify(normalizedPath),
+      )
+    }
+  }
+
   const usingEmulator = Boolean(process.env.FIREBASE_DATABASE_EMULATOR_HOST?.trim())
 
   const url = new URL(`${rtdbBaseUrl()}/${normalizedPath}.json`)
@@ -311,6 +339,14 @@ async function rtdbRestWrite(
     const accessToken = await getAdminAccessToken()
     url.searchParams.set('access_token', accessToken)
     headers.Authorization = `Bearer ${accessToken}`
+  }
+
+  if (method === 'POST' && isLiveSessionChunksPath(normalizedPath)) {
+    console.info('[rtdb-rest] chunk POST', {
+      path: normalizedPath,
+      pathname: url.pathname,
+      host: url.host,
+    })
   }
 
   const controller = new AbortController()

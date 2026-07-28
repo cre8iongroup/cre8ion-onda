@@ -11,6 +11,7 @@
  * Usage (live): omit FIREBASE_DATABASE_EMULATOR_HOST; point URL + credentials at the real project.
  */
 import { pushRtdbJson, getAdminAccessToken } from '../lib/firebase/admin'
+import { rtdbLiveSessionChunksPath } from '../lib/rtdbPaths'
 
 async function main() {
   const sessionId = process.env.SESSION_ID || 'spike-probe-session'
@@ -27,7 +28,7 @@ async function main() {
 
   console.log('[probe] REST push…')
   const pushStarted = Date.now()
-  const result = await pushRtdbJson(`liveSessions/${sessionId}/chunks`, {
+  const result = await pushRtdbJson(rtdbLiveSessionChunksPath(sessionId), {
     text: `probe ${new Date().toISOString()}`,
     speakerLabel: 'probe',
     timestamp: Date.now(),

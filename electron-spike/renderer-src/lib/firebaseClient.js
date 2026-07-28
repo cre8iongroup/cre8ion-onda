@@ -43,6 +43,17 @@ export function getRendererDatabase() {
       'Firebase client env incomplete — set NEXT_PUBLIC_FIREBASE_* in electron-spike/.env',
     )
   }
+  try {
+    const parsed = new URL(cfg.databaseURL)
+    if (parsed.pathname && parsed.pathname !== '/') {
+      throw new Error(
+        `NEXT_PUBLIC_FIREBASE_DATABASE_URL must be the database root (no path). Got pathname=${parsed.pathname}`,
+      )
+    }
+  } catch (err) {
+    if (err?.message?.includes('DATABASE_URL')) throw err
+    throw new Error(`NEXT_PUBLIC_FIREBASE_DATABASE_URL is not a valid URL: ${cfg.databaseURL}`)
+  }
   const app = getApps().length ? getApp() : initializeApp(cfg)
   return getDatabase(app)
 }

@@ -126,6 +126,8 @@ export const recallWebhook = functions.https.onRequest(async (req, res) => {
   }
 
   try {
+    // Canonical path — must match database.rules.json + Next.js webhook writers
+    // (liveSessions/{sessionId}/chunks). Never write to root {sessionId}/chunks.
     const chunksRef = db.ref(`liveSessions/${normalized.sessionId}/chunks`)
     await chunksRef.push({
       text: normalized.text,

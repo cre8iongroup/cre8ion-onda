@@ -18,7 +18,7 @@ import {
   retrieveAndStoreRecallAudio,
   type RetrieveAndStoreAudioResult,
 } from '@/lib/recall/retrieveAndStoreAudio'
-import { verifyRecallSvixPayload, SvixVerificationError } from '@/lib/recall/verifySvix'
+import { verifyRecallSvixPayload, SvixVerificationError, listIncomingHeaderNames } from '@/lib/recall/verifySvix'
 import {
   markSessionEndedFromRecall,
   resolveSessionIdFromRecordingId,
@@ -66,18 +66,6 @@ export type WorkspaceWebhookResult = {
   body: Record<string, unknown>
 }
 
-function headerMap(headers: Headers): {
-  'svix-id': string | null
-  'svix-timestamp': string | null
-  'svix-signature': string | null
-} {
-  return {
-    'svix-id': headers.get('svix-id'),
-    'svix-timestamp': headers.get('svix-timestamp'),
-    'svix-signature': headers.get('svix-signature'),
-  }
-}
-
 /**
  * Core handler used by the App Router route and the local verification script.
  * `rawBody` must be the exact UTF-8 string that was signed.
@@ -87,11 +75,18 @@ export async function handleWorkspaceRecallWebhook(opts: {
   headers: Headers
   searchParams?: URLSearchParams
 }): Promise<WorkspaceWebhookResult> {
+  // Header *names* only (never values) — confirms Recall/Svix brand in App Hosting logs.
+  console.info('[recall/webhook] incoming header names', {
+    names: listIncomingHeaderNames(opts.headers),
+  })
+
   const d = deps()
 
   let body: unknown
   try {
-    body = d.verify(opts.rawBody, headerMap(opts.headers))
+    // Pass full Headers — verifyRecallSvixPayload + svix Webhook.verify handle
+    // both webhook-* (Recall docs) and svix-* brands.
+    body = d.verify(opts.rawBody, opts.headers)
   } catch (err) {
     if (err instanceof SvixVerificationError) {
       console.error('[recall/webhook] Svix verification rejected', {

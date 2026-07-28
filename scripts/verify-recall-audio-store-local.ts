@@ -393,9 +393,9 @@ async function main() {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'svix-id': sig.id,
-      'svix-timestamp': sig.timestamp,
-      'svix-signature': sig.signature,
+      'webhook-id': sig.id,
+      'webhook-timestamp': sig.timestamp,
+      'webhook-signature': sig.signature,
     },
     body,
   })

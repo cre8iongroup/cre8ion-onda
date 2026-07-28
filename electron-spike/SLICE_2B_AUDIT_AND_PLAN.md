@@ -17,6 +17,7 @@
 | Recall Desktop SDK | Native Mac/Windows only — does **not** load here (same constraint as `SPIKE_REPORT.md`) |
 | Hardware mic | Not available for meaningful level metering |
 | Live Mac concurrency result | **Not obtained in this pass** — requires Alex’s Mac laptop |
+| Linux smoke | Electron launches; Firebase health fails without Next (expected); Recall SDK init skipped — **cannot** exercise overlap here |
 
 ### What was audited in code (no speculation about unoccupied routes)
 

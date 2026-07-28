@@ -10,6 +10,7 @@ import {
 import { getOndaSpike } from './ondaSpike.js'
 import { createInputMeterTap } from './lib/inputMeterTap.js'
 import { getFirebaseConfigStatus, getRendererDatabase } from './lib/firebaseClient.js'
+import { buildCaptionDisplayLines } from './lib/captionLines.js'
 import { networkHealthColor } from './lib/networkHealth.js'
 
 function operatorFeedLabel(feedState) {
@@ -57,6 +58,10 @@ function CaptionPreview({ sessionId, feedState }) {
   const [chunks, setChunks] = useState([])
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
+  const scrollRef = useRef(null)
+
+  // Partials share one in-progress row; finals become permanent lines.
+  const lines = useMemo(() => buildCaptionDisplayLines(chunks), [chunks])
 
   useEffect(() => {
     setChunks([])
@@ -74,17 +79,24 @@ function CaptionPreview({ sessionId, feedState }) {
         orderByChild('timestamp'),
         limitToLast(80),
       )
+      const onListenError = (err) => {
+        setError(err?.message || String(err))
+      }
       const seen = new Map()
-      unsubAdded = onChildAdded(chunksRef, (snap) => {
-        const val = snap.val()
-        if (!val?.text) return
-        seen.set(snap.key, { id: snap.key, ...val })
-        setChunks(
-          Array.from(seen.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)),
-        )
-        setReady(true)
-      })
-      unsubValue = onValue(chunksRef, () => setReady(true))
+      unsubAdded = onChildAdded(
+        chunksRef,
+        (snap) => {
+          const val = snap.val()
+          if (!val?.text) return
+          seen.set(snap.key, { id: snap.key, ...val })
+          setChunks(
+            Array.from(seen.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)),
+          )
+          setReady(true)
+        },
+        onListenError,
+      )
+      unsubValue = onValue(chunksRef, () => setReady(true), onListenError)
     } catch (err) {
       setError(err?.message || String(err))
     }
@@ -93,6 +105,12 @@ function CaptionPreview({ sessionId, feedState }) {
       unsubValue()
     }
   }, [sessionId, feedState])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [lines])
 
   if (feedState === 'ended') {
     return (
@@ -105,7 +123,7 @@ function CaptionPreview({ sessionId, feedState }) {
   if (error) {
     return <div className="op-caption-empty op-error">{error}</div>
   }
-  if (!ready || chunks.length === 0) {
+  if (!ready || lines.length === 0) {
     return (
       <div className="op-caption-empty">
         Waiting for live captions…
@@ -114,9 +132,14 @@ function CaptionPreview({ sessionId, feedState }) {
     )
   }
   return (
-    <div className="op-caption-scroll" aria-live="polite">
-      {chunks.map((c) => (
-        <div key={c.id} className="op-caption-line">
+    <div className="op-caption-scroll" aria-live="polite" ref={scrollRef}>
+      {lines.map((c) => (
+        <div
+          key={c.id}
+          className={
+            c.finalized ? 'op-caption-line' : 'op-caption-line op-caption-line--live'
+          }
+        >
           {c.speakerLabel ? <span className="op-caption-speaker">{c.speakerLabel}</span> : null}
           <span>{c.text}</span>
         </div>

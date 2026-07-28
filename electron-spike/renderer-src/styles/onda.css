@@ -596,6 +596,11 @@ p {
   color: var(--color-text-primary);
 }
 
+/* In-progress partial — same layout, slightly softer until finalized */
+.op-caption-line--live {
+  color: var(--color-text-secondary, #b8b8c2);
+}
+
 .op-caption-speaker {
   display: inline-block;
   margin-right: var(--space-2);

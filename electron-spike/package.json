@@ -9,7 +9,8 @@
     "dev:renderer": "vite",
     "preview:renderer": "vite preview --host 127.0.0.1 --port 4173",
     "start": "npm run build:renderer && electron .",
-    "verify-normalize": "node scripts/verify-normalize.js"
+    "verify-normalize": "node scripts/verify-normalize.js",
+    "verify-caption-lines": "node scripts/verify-caption-lines.js"
   },
   "engines": {
     "node": ">=20"

@@ -306,24 +306,6 @@ export default function App() {
     capturing,
   })
 
-  // After a session ends, return to this room's session list (home base).
-  useEffect(() => {
-    if (screen !== 'record' || feedState !== 'ended') return undefined
-    let cancelled = false
-    ;(async () => {
-      await getOndaSpike().clearSession()
-      if (cancelled) return
-      setSelectedSessionId(null)
-      setSessionLabel(null)
-      setWebhookUrl(null)
-      setEndError('')
-      setScreen('sessions')
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [screen, feedState])
-
   async function handleUnlock() {
     setUnlockError('')
     if (!credentialInput.trim()) {

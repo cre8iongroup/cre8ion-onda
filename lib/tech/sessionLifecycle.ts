@@ -321,6 +321,12 @@ export async function markSessionEndedFromRecall(opts: {
   sessionId: string
   showId?: string | null
   recordingId?: string | null
+  /**
+   * Firebase Storage object path for the server-retrieved Recall audio.
+   * Canonical: shows/{showId}/sessions/{sessionId}/audio/{recordingId}.mp3
+   * Written so Review can locate the file later (`SessionDoc.audioStoragePath`).
+   */
+  audioStoragePath?: string | null
   reason: string
 }): Promise<{ ok: true; sessionId: string; showId: string | null }> {
   const sessionId = opts.sessionId
@@ -341,15 +347,22 @@ export async function markSessionEndedFromRecall(opts: {
     endedAt: Date.now(),
     endedReason: opts.reason,
     ...(opts.recordingId ? { recordingId: opts.recordingId } : {}),
+    ...(opts.audioStoragePath ? { audioStoragePath: opts.audioStoragePath } : {}),
   })
 
   const firestore = getAdminFirestore()
+  const sessionPatch: Record<string, unknown> = {
+    lifecycleStatus: 'ended',
+    feedState: 'ended',
+  }
+  if (opts.recordingId) sessionPatch.recordingId = opts.recordingId
+  if (opts.audioStoragePath) {
+    sessionPatch.audioStoragePath = opts.audioStoragePath
+    sessionPatch.audioStoredAt = FieldValue.serverTimestamp()
+  }
 
   if (showId) {
-    await firestore.doc(`shows/${showId}/sessions/${sessionId}`).update({
-      lifecycleStatus: 'ended',
-      feedState: 'ended',
-    })
+    await firestore.doc(`shows/${showId}/sessions/${sessionId}`).update(sessionPatch)
   } else {
     // Fallback: collectionGroup by document id (last path segment)
     const sessionsQuery = await firestore
@@ -360,10 +373,7 @@ export async function markSessionEndedFromRecall(opts: {
 
     if (!sessionsQuery.empty) {
       showId = sessionsQuery.docs[0].ref.parent.parent?.id ?? null
-      await sessionsQuery.docs[0].ref.update({
-        lifecycleStatus: 'ended',
-        feedState: 'ended',
-      })
+      await sessionsQuery.docs[0].ref.update(sessionPatch)
     } else {
       console.warn(
         '[sessionLifecycle] markSessionEnded: could not resolve showId; RTDB feedState=ended set',

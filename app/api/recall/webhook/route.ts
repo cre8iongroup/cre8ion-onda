@@ -10,8 +10,10 @@ import { handleWorkspaceRecallWebhook } from '@/lib/recall/workspaceWebhook'
  * Auth: Svix signatures only (`RECALL_SVIX_SIGNING_SECRET`).
  * Does NOT accept `x-recall-secret` — that is Electron-forwarder-only.
  *
- * sdk_upload.complete → recordingIndex/{recordingId} → markSessionEndedFromRecall
- * (Firestore lifecycleStatus + RTDB feedState → ended), same outcome as the local forwarder.
+ * sdk_upload.complete → recordingIndex/{recordingId} → Retrieve Recording →
+ * Firebase Storage (shows/{showId}/sessions/{sessionId}/audio/{recordingId}.mp3) →
+ * markSessionEndedFromRecall (lifecycleStatus + SessionDoc.audioStoragePath).
+ * Electron local download is unchanged — this is an independent server path.
  */
 export async function POST(request: NextRequest) {
   const rawBody = await request.text()

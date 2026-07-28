@@ -14,7 +14,7 @@
  *
  * Independent of Electron's local download path (electron-spike/downloads/).
  */
-import { getAdminStorage } from '@/lib/firebase/admin'
+import { getAdminStorage, resolveFirebaseStorageBucket } from '@/lib/firebase/admin'
 
 export type RetrieveAndStoreAudioResult = {
   storagePath: string
@@ -170,17 +170,36 @@ export async function retrieveAndStoreRecallAudio(opts: {
   }
 
   const storagePath = buildSessionAudioStoragePath(opts.showId, opts.sessionId, recordingId)
-  const bucketName =
-    (opts.storageBucket ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET)?.trim() || null
+  const resolved = opts.storageBucket
+    ? {
+        bucket: opts.storageBucket.trim().replace(/^gs:\/\//i, '').replace(/\/+$/, '') || null,
+        source: 'opts.storageBucket' as const,
+      }
+    : resolveFirebaseStorageBucket()
+  const bucketName = resolved.bucket
   if (!bucketName) {
     throw new RecallAudioRetrieveError(
       'missing_storage_bucket',
-      'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET is not configured — cannot upload session audio',
+      'No Storage bucket configured — set NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ' +
+        '(or rely on App Hosting FIREBASE_CONFIG.storageBucket). ' +
+        'Expected cre8ion-onda.firebasestorage.app for this project.',
     )
   }
 
   try {
     const bucket = getAdminStorage().bucket(bucketName)
+    const [exists] = await bucket.exists()
+    if (!exists) {
+      throw new RecallAudioRetrieveError(
+        'storage_upload_failed',
+        `Firebase Storage bucket does not exist: ${bucketName} ` +
+          `(source=${resolved.source}). Provision Cloud Storage for Firebase in the ` +
+          `Console (Blaze) so gs://${bucketName} exists, and ensure App Hosting env ` +
+          `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET matches — not the legacy *.appspot.com name ` +
+          `unless that is the bucket shown in Console → Storage.`,
+        { storagePath, bucketName, source: resolved.source },
+      )
+    }
     const file = bucket.file(storagePath)
     await file.save(audioBytes, {
       resumable: false,
@@ -199,10 +218,10 @@ export async function retrieveAndStoreRecallAudio(opts: {
     if (err instanceof RecallAudioRetrieveError) throw err
     throw new RecallAudioRetrieveError(
       'storage_upload_failed',
-      `Firebase Storage upload failed for ${storagePath}: ${
+      `Firebase Storage upload failed for gs://${bucketName}/${storagePath}: ${
         err instanceof Error ? err.message : String(err)
       }`,
-      { storagePath, bytes: audioBytes.length },
+      { storagePath, bytes: audioBytes.length, bucketName, source: resolved.source },
     )
   }
 

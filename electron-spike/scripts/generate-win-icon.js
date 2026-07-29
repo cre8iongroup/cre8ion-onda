@@ -1,9 +1,14 @@
 /**
- * Generate electron-spike/build/icon.ico from the Onda welcome wave mark.
+ * Build electron-spike/build/icon.ico from the CSS-rendered source PNG.
  *
- * Source mark: Unicode WAVE DASH "〜" (U+301C) rendered inline in
- * renderer-src/App.jsx (.op-brand-mark / .op-brand-mark-lg) with
- * color --color-primary-light (#7b5bf5). There is no separate SVG/PNG asset.
+ * Source of truth for the mark styling: login page `.auth-logo` in
+ * app/globals.css (NOT Electron `.op-brand-mark-lg`, which is solid purple).
+ * Login markup: <div className="auth-logo">〜 Onda</div>
+ *
+ * High-res source: build/icon-source.png (purple→teal gradient 〜 on
+ * transparent). Re-render that PNG with a headless browser if CSS changes —
+ * see scripts/render-icon-source.js (optional; needs puppeteer via
+ * `npm install --no-save puppeteer`).
  *
  * Usage (from electron-spike/):
  *   npm install --no-save sharp png-to-ico
@@ -29,39 +34,33 @@ async function main() {
 
   const root = path.resolve(__dirname, '..')
   const buildDir = path.join(root, 'build')
+  const sourcePng = path.join(buildDir, 'icon-source.png')
   const tmpDir = path.join(buildDir, '_icon-png')
+  const icoPath = path.join(buildDir, 'icon.ico')
   const SIZES = [16, 32, 48, 128, 256]
-  const COLOR = '#7b5bf5'
 
-  function waveSvg(size) {
-    const fontSize = Math.round(size * 0.72)
-    return Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <text
-    x="50%"
-    y="50%"
-    text-anchor="middle"
-    dominant-baseline="central"
-    font-family="Segoe UI, Arial, Helvetica, sans-serif"
-    font-size="${fontSize}"
-    font-weight="600"
-    fill="${COLOR}"
-  >〜</text>
-</svg>`)
+  if (!fs.existsSync(sourcePng)) {
+    console.error(
+      `Missing ${path.relative(root, sourcePng)}.\n` +
+        'Re-render it first: npm install --no-save puppeteer && node scripts/render-icon-source.js',
+    )
+    process.exit(1)
   }
 
   fs.mkdirSync(tmpDir, { recursive: true })
   const pngPaths = []
   for (const size of SIZES) {
     const out = path.join(tmpDir, `icon-${size}.png`)
-    await sharp(waveSvg(size))
-      .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    await sharp(sourcePng)
+      .resize(size, size, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
       .png()
       .toFile(out)
     pngPaths.push(out)
   }
 
-  const icoPath = path.join(buildDir, 'icon.ico')
   const icoBuf = await pngToIco(pngPaths)
   fs.writeFileSync(icoPath, icoBuf)
 

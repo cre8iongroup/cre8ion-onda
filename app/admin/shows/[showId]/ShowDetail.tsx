@@ -51,6 +51,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
   const [flash, setFlash] = useState<string | null>(null)
   const [draftBusyId, setDraftBusyId] = useState<string | null>(null)
   const [draftError, setDraftError] = useState<string | null>(null)
+  const [resetBusyId, setResetBusyId] = useState<string | null>(null)
 
   const canCreate = Boolean(capabilities?.canCreateShows || capabilities?.canEditShows)
   const canEditSessions = canCreate
@@ -83,6 +84,57 @@ export default function ShowDetail({ showId }: { showId: string }) {
       setDraftError(err?.message || 'Failed to update draft visibility.')
     } finally {
       setDraftBusyId(null)
+    }
+  }
+
+  async function resetSession(session: WithId<SessionDoc>) {
+    setDraftError(null)
+    const label = session.friendlyName || session.title || session.id
+    const confirmed = window.confirm(
+      `Reset “${label}”? This will return it to Standby and attempt to stop any active recording. In-progress live state will be discarded.`,
+    )
+    if (!confirmed) return
+
+    if (!user) {
+      setDraftError('You must be signed in to reset a session.')
+      return
+    }
+
+    setResetBusyId(session.id)
+    try {
+      const idToken = await user.getIdToken()
+      const res = await fetch('/api/admin/sessions/reset', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ showId, sessionId: session.id }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        previousFeedState?: string
+        recallStop?: { outcome?: string; reason?: string }
+      }
+      if (!res.ok) {
+        throw new Error(json.error || `Reset failed (${res.status})`)
+      }
+      const recallNote =
+        json.recallStop?.reason === 'desktop_sdk_stop_only'
+          ? ' Recall stop skipped (Desktop SDK only).'
+          : json.recallStop?.outcome === 'failed'
+            ? ` Recall probe failed (${json.recallStop.reason}).`
+            : json.recallStop?.reason === 'no_recording_bound'
+              ? ' No recording was bound.'
+              : ''
+      setFlash(
+        `“${label}” reset to Standby (was ${json.previousFeedState || session.feedState}).${recallNote}`,
+      )
+    } catch (err: any) {
+      console.error('ShowDetail: session reset failed', err)
+      setDraftError(err?.message || 'Failed to reset session.')
+    } finally {
+      setResetBusyId(null)
     }
   }
 
@@ -344,21 +396,36 @@ export default function ShowDetail({ showId }: { showId: string }) {
                       )}
                     </span>
                     {canEditSessions ? (
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        disabled={draftBusyId === session.id}
-                        title={
-                          session.isDraft
-                            ? 'Make visible to Onda Operator and attendees'
-                            : canHideSession(session.feedState)
-                              ? 'Hide from Onda Operator and attendees'
-                              : 'End the session before hiding it'
-                        }
-                        onClick={() => toggleDraft(session)}
-                      >
-                        {session.isDraft ? 'Make visible' : 'Hide'}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={
+                            draftBusyId === session.id || resetBusyId === session.id
+                          }
+                          title={
+                            session.isDraft
+                              ? 'Make visible to Onda Operator and attendees'
+                              : canHideSession(session.feedState)
+                                ? 'Hide from Onda Operator and attendees'
+                                : 'End the session before hiding it'
+                          }
+                          onClick={() => toggleDraft(session)}
+                        >
+                          {session.isDraft ? 'Make visible' : 'Hide'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={
+                            draftBusyId === session.id || resetBusyId === session.id
+                          }
+                          title="Force feedState back to Standby from any state (Admin override)"
+                          onClick={() => resetSession(session)}
+                        >
+                          {resetBusyId === session.id ? 'Resetting…' : 'Reset session'}
+                        </button>
+                      </>
                     ) : null}
                   </div>
                 </div>

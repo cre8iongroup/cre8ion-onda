@@ -71,6 +71,9 @@ export interface ShowBranding {
 // Shows
 // ─────────────────────────────────────────────
 
+/** Admin-selected Deepgram caption formatting for Onda Operator recording. */
+export type TranscriptionStyle = 'standard' | 'lightweight'
+
 export interface ShowDoc {
   name: string
   clientName: string
@@ -94,6 +97,18 @@ export interface ShowDoc {
    * Validated server-side via Admin SDK — never returned to clients after unlock.
    */
   techCredential?: string
+  /**
+   * Deepgram streaming style for live captions (Operator recording-start).
+   * Maps to presets in lib/recall/deepgramStreamingPresets — see
+   * TRANSCRIPTION_STYLE_TO_PRESET. Required on new shows; older docs may
+   * lack it until Admin saves once (unlock falls back to 'standard').
+   */
+  transcriptionStyle: TranscriptionStyle
+  /**
+   * Admin-authored markdown shown read-only in Onda Operator under Input/Network.
+   * Empty/missing → Operator hides the block.
+   */
+  operatorInstructions?: string
   archivedAt?: Timestamp
   createdAt: Timestamp
   createdBy: string

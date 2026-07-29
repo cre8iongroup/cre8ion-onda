@@ -3,7 +3,7 @@
  * API key lives in electron-spike/.env — do not ship this pattern to production.
  */
 
-const { buildDeepgramStreamingConfig } = require('./deepgramStreamingPresets')
+const { buildDeepgramStreamingConfig, presetIdForTranscriptionStyle } = require('./deepgramStreamingPresets')
 
 function recallBaseUrl(region) {
   return `https://${region}.recall.ai`
@@ -15,6 +15,7 @@ async function createSdkUpload({
   sessionId,
   languageCode = 'en',
   publicWebhookUrl = null,
+  transcriptionStyle = null,
 }) {
   const realtimeEndpoints = [
     {
@@ -33,9 +34,14 @@ async function createSdkUpload({
     })
   }
 
-  // A/B: flip `active` in lib/recall/deepgramStreamingPresets.json (or DEEPGRAM_STREAMING_PRESET).
-  const dg = buildDeepgramStreamingConfig({ language: languageCode || 'en' })
+  // Show transcriptionStyle → preset; missing style falls through to env/JSON active.
+  const mappedPreset = presetIdForTranscriptionStyle(transcriptionStyle)
+  const dg = buildDeepgramStreamingConfig({
+    language: languageCode || 'en',
+    presetId: mappedPreset ?? undefined,
+  })
   console.info('[recallApi] deepgram_streaming preset', {
+    transcriptionStyle: transcriptionStyle || null,
     presetId: dg.presetId,
     label: dg.label,
   })
@@ -76,6 +82,7 @@ async function createSdkUpload({
     id: json.id,
     uploadToken: json.upload_token,
     recordingId: json.recording_id,
+    deepgramPreset: dg.presetId,
   }
 }
 

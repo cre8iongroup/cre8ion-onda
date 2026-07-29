@@ -383,6 +383,7 @@ async function startRecording() {
       sessionId: activeContext.sessionId,
       languageCode: CONFIG.languageCode,
       publicWebhookUrl,
+      transcriptionStyle: activeContext.transcriptionStyle || null,
     })
     activeUploadId = upload.id
     activeRecordingId = upload.recordingId
@@ -713,7 +714,7 @@ ipcMain.handle('spike:unlock', async (_evt, credential) => {
 })
 
 ipcMain.handle('spike:select-session', async (_evt, payload) => {
-  const { credential, showId, showName, session } = payload || {}
+  const { credential, showId, showName, session, transcriptionStyle } = payload || {}
   if (!credential || !showId || !session?.id) {
     return { ok: false, error: 'Missing credential, showId, or session' }
   }
@@ -725,12 +726,18 @@ ipcMain.handle('spike:select-session', async (_evt, payload) => {
     sessionLabel: session.friendlyName || session.title || session.id,
     feedState: session.feedState || 'standby',
     webhookUrl: webhookUrlForSession(session.id),
+    // Snapshot at select/unlock time — Admin mid-show changes need re-unlock.
+    transcriptionStyle:
+      transcriptionStyle === 'lightweight' || transcriptionStyle === 'standard'
+        ? transcriptionStyle
+        : 'standard',
   }
   sequenceNumber = 0
   sendLog('info', 'Session selected', {
     sessionId: activeContext.sessionId,
     feedState: activeContext.feedState,
     webhookUrl: activeContext.webhookUrl,
+    transcriptionStyle: activeContext.transcriptionStyle,
   })
   sendStatus({
     showId: activeContext.showId,
@@ -739,6 +746,7 @@ ipcMain.handle('spike:select-session', async (_evt, payload) => {
     sessionLabel: activeContext.sessionLabel,
     feedState: activeContext.feedState,
     webhookUrl: activeContext.webhookUrl,
+    transcriptionStyle: activeContext.transcriptionStyle,
   })
   return { ok: true, context: { ...activeContext, credential: undefined } }
 })

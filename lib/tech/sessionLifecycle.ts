@@ -16,6 +16,7 @@ import {
   setRtdbJson,
   updateRtdbJson,
 } from '@/lib/firebase/admin'
+import { rtdbLiveSessionPath, rtdbRecordingIndexPath } from '@/lib/rtdbPaths'
 import type { FeedState, SessionDoc, ShowDoc } from '@/types'
 
 export type SessionSummary = {
@@ -198,7 +199,7 @@ export async function startSession(opts: {
 
   await sessionRef.update({ feedState: 'testing' })
 
-  await setRtdbJson(`liveSessions/${opts.sessionId}`, {
+  await setRtdbJson(rtdbLiveSessionPath(opts.sessionId), {
     feedState: 'testing',
     showId: opts.showId,
     startedAt: Date.now(),
@@ -243,7 +244,7 @@ export async function goLiveSession(opts: {
   }
 
   await sessionRef.update({ feedState: 'live' })
-  await updateRtdbJson(`liveSessions/${opts.sessionId}`, {
+  await updateRtdbJson(rtdbLiveSessionPath(opts.sessionId), {
     feedState: 'live',
     wentLiveAt: Date.now(),
   })
@@ -285,7 +286,7 @@ export async function stopSession(opts: {
 
   await sessionRef.update({ feedState: 'stopping' })
 
-  await updateRtdbJson(`liveSessions/${opts.sessionId}`, {
+  await updateRtdbJson(rtdbLiveSessionPath(opts.sessionId), {
     feedState: 'stopping',
     stoppingAt: Date.now(),
   })
@@ -313,13 +314,13 @@ export async function bindRecording(opts: {
     throw new TechLifecycleError(400, 'missing_recording_id', 'recordingId is required')
   }
 
-  await updateRtdbJson(`liveSessions/${opts.sessionId}`, {
+  await updateRtdbJson(rtdbLiveSessionPath(opts.sessionId), {
     recordingId: opts.recordingId,
     uploadId: opts.uploadId ?? null,
     showId: opts.showId,
   })
 
-  await setRtdbJson(`recordingIndex/${opts.recordingId}`, {
+  await setRtdbJson(rtdbRecordingIndexPath(opts.recordingId), {
     sessionId: opts.sessionId,
     showId: opts.showId,
     uploadId: opts.uploadId ?? null,
@@ -354,7 +355,7 @@ export async function resolveSessionIdFromRecordingId(
   recordingId: string,
 ): Promise<{ sessionId: string; showId: string } | null> {
   if (!recordingId) return null
-  const data = (await rtdbGetJson(`recordingIndex/${recordingId}`)) as {
+  const data = (await rtdbGetJson(rtdbRecordingIndexPath(recordingId))) as {
     sessionId?: string
     showId?: string
   } | null
@@ -380,13 +381,13 @@ export async function markSessionEndedFromRecall(opts: {
 
   let showId = opts.showId ?? null
   if (!showId) {
-    const liveMeta = (await rtdbGetJson(`liveSessions/${sessionId}`)) as {
+    const liveMeta = (await rtdbGetJson(rtdbLiveSessionPath(sessionId))) as {
       showId?: string
     } | null
     showId = liveMeta?.showId ?? null
   }
 
-  await updateRtdbJson(`liveSessions/${sessionId}`, {
+  await updateRtdbJson(rtdbLiveSessionPath(sessionId), {
     feedState: 'ended',
     endedAt: Date.now(),
     endedReason: opts.reason,

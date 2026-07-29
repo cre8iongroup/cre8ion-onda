@@ -40,24 +40,36 @@ export default function PrivateTranscriptPreview({
 
     const seen = new Map<string, ChunkRow>()
 
-    const unsubAdded = onChildAdded(chunksRef, (snap) => {
-      const val = snap.val() as RTDBChunk
-      if (!val?.text) return
-      seen.set(snap.key!, { id: snap.key!, ...val })
-      const next = Array.from(seen.values()).sort(
-        (a, b) => (a.timestamp || 0) - (b.timestamp || 0)
-      )
-      setChunks(next)
-      setConnection('live')
-      onLastChunkAt?.(val.timestamp || Date.now())
-    })
+    const onListenError = () => {
+      setConnection('lost')
+    }
+
+    const unsubAdded = onChildAdded(
+      chunksRef,
+      (snap) => {
+        const val = snap.val() as RTDBChunk
+        if (!val?.text) return
+        seen.set(snap.key!, { id: snap.key!, ...val })
+        const next = Array.from(seen.values()).sort(
+          (a, b) => (a.timestamp || 0) - (b.timestamp || 0)
+        )
+        setChunks(next)
+        setConnection('live')
+        onLastChunkAt?.(val.timestamp || Date.now())
+      },
+      onListenError,
+    )
 
     // Also listen once for initial empty state settle
-    const unsubValue = onValue(chunksRef, (snap) => {
-      if (!snap.exists()) {
-        setConnection((c) => (c === 'live' ? c : 'connecting'))
-      }
-    })
+    const unsubValue = onValue(
+      chunksRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setConnection((c) => (c === 'live' ? c : 'connecting'))
+        }
+      },
+      onListenError,
+    )
 
     return () => {
       unsubAdded()

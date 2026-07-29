@@ -74,17 +74,24 @@ function CaptionPreview({ sessionId, feedState }) {
         orderByChild('timestamp'),
         limitToLast(80),
       )
+      const onListenError = (err) => {
+        setError(err?.message || String(err))
+      }
       const seen = new Map()
-      unsubAdded = onChildAdded(chunksRef, (snap) => {
-        const val = snap.val()
-        if (!val?.text) return
-        seen.set(snap.key, { id: snap.key, ...val })
-        setChunks(
-          Array.from(seen.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)),
-        )
-        setReady(true)
-      })
-      unsubValue = onValue(chunksRef, () => setReady(true))
+      unsubAdded = onChildAdded(
+        chunksRef,
+        (snap) => {
+          const val = snap.val()
+          if (!val?.text) return
+          seen.set(snap.key, { id: snap.key, ...val })
+          setChunks(
+            Array.from(seen.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)),
+          )
+          setReady(true)
+        },
+        onListenError,
+      )
+      unsubValue = onValue(chunksRef, () => setReady(true), onListenError)
     } catch (err) {
       setError(err?.message || String(err))
     }

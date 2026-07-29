@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { pushRtdbJson } from '@/lib/firebase/admin'
+import { rtdbLiveSessionChunksPath } from '@/lib/rtdbPaths'
 import { normalizeToOndaPayload } from '@/lib/recall/normalizeTranscript'
 import {
   markSessionEndedFromRecall,
@@ -148,7 +149,8 @@ export async function POST(request: NextRequest, context: RouteCtx) {
 
   // Force path sessionId so a spoofed body.sessionId cannot cross rooms
   const sessionId = pathSessionId
-  const rtdbPath = `liveSessions/${sessionId}/chunks`
+  // Canonical path — must match database.rules.json + Operator CaptionPreview
+  const rtdbPath = rtdbLiveSessionChunksPath(sessionId)
   const payload = {
     text: normalized.text,
     speakerLabel: normalized.speaker ?? null,

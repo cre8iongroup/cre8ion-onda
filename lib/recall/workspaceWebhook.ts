@@ -12,6 +12,7 @@
  * Electron's local download is unchanged — this is an independent server path.
  */
 import { pushRtdbJson } from '@/lib/firebase/admin'
+import { rtdbLiveSessionChunksPath } from '@/lib/rtdbPaths'
 import { normalizeToOndaPayload } from '@/lib/recall/normalizeTranscript'
 import {
   RecallAudioRetrieveError,
@@ -252,7 +253,8 @@ export async function handleWorkspaceRecallWebhook(opts: {
     return { status: 400, body: { error: 'Unrecognized transcript payload' } }
   }
 
-  const rtdbPath = `liveSessions/${normalized.sessionId}/chunks`
+  // Canonical path — must match database.rules.json + Operator CaptionPreview
+  const rtdbPath = rtdbLiveSessionChunksPath(normalized.sessionId)
   const payload = {
     text: normalized.text,
     speakerLabel: normalized.speaker ?? null,

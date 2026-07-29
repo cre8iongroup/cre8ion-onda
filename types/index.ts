@@ -65,6 +65,15 @@ export interface ShowBranding {
   endSessionMessage?: string
   redirectURL?: string        // required if endSessionBehavior === 'redirect'
   portalURL: string           // slug for /portal/[slug] and v2 domain routing
+  /**
+   * Optional per-show legal / attribution markdown (e.g. "powered by" + client terms link).
+   * Admin-authored only for now — no attendee/output rendering until Phase 5.
+   *
+   * Phase 5 render note: restrict markdown to paragraphs, bold, italic, links,
+   * and line breaks only — no headings, no lists, no underline. Narrower than
+   * Operator Instructions; this is a short footer-style message.
+   */
+  legalNotice?: string
 }
 
 // ─────────────────────────────────────────────

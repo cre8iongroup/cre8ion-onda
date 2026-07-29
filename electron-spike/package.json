@@ -9,11 +9,32 @@
     "dev:renderer": "vite",
     "preview:renderer": "vite preview --host 127.0.0.1 --port 4173",
     "start": "npm run build:renderer && electron .",
+    "build:win": "npm run build:renderer && electron-builder --win",
     "verify-normalize": "node scripts/verify-normalize.js",
     "verify-caption-lines": "node scripts/verify-caption-lines.js"
   },
   "engines": {
     "node": ">=20"
+  },
+  "build": {
+    "appId": "com.cre8ion.onda.operator",
+    "productName": "Onda Operator",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "lib/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "forceCodeSigning": false
+    }
   },
   "dependencies": {
     "@recallai/desktop-sdk": "^2.0.26",
@@ -27,6 +48,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.4",
     "electron": "^34.2.0",
+    "electron-builder": "^26.15.3",
     "vite": "^8.1.5"
   }
 }

@@ -237,7 +237,7 @@ async function seedSessionDocs(recordingId: string) {
   await sessionRef.set(
     {
       title: 'Audio verify session',
-      location: 'Lab',
+      roomId: 'probe-room',
       friendlyName: 'Audio Verify',
       languages: ['en'],
       isDraft: false,

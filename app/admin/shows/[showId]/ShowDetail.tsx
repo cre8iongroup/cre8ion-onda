@@ -15,12 +15,14 @@ import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
 import type { SessionDoc, ShowDoc, WithId } from '@/types'
 import CreateSessionModal from './CreateSessionModal'
+import RoomsPanel, { collectSessionRoomIds } from './RoomsPanel'
 import TechCredentialPanel from './TechCredentialPanel'
 import {
   canHideSession,
   sessionStatusBadgeClass,
   sessionStatusLabel,
 } from '@/lib/sessionStatus'
+import { resolveRoomName } from '@/lib/rooms'
 
 function formatDateRange(start?: Timestamp, end?: Timestamp): string {
   if (!start || !end) return 'Dates TBD'
@@ -52,6 +54,9 @@ export default function ShowDetail({ showId }: { showId: string }) {
 
   const canCreate = Boolean(capabilities?.canCreateShows || capabilities?.canEditShows)
   const canEditSessions = canCreate
+  const rooms = show?.rooms ?? []
+  const hasRooms = rooms.length > 0
+  const sessionRoomIds = collectSessionRoomIds(sessions)
 
   async function toggleDraft(session: WithId<SessionDoc>) {
     setDraftError(null)
@@ -136,6 +141,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
       setError('You do not have permission to create sessions.')
       return
     }
+    setError(null)
     setModalOpen(true)
   }, [canCreate])
 
@@ -234,12 +240,51 @@ export default function ShowDetail({ showId }: { showId: string }) {
         />
       </section>
 
+      <section style={{ marginBottom: 'var(--space-10)' }}>
+        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Rooms</h2>
+        <RoomsPanel
+          showId={show.id}
+          rooms={rooms}
+          sessionRoomIds={sessionRoomIds}
+          canEdit={canCreate}
+          onFlash={setFlash}
+        />
+      </section>
+
       <section>
         <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Sessions</h2>
 
         {loadingSessions ? (
           <div className="flex items-center justify-center" style={{ padding: 'var(--space-12)' }}>
             <span className="spinner" aria-label="Loading sessions" />
+          </div>
+        ) : !hasRooms && sessions.length === 0 ? (
+          <div
+            className="card"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 'var(--space-12)',
+              textAlign: 'center',
+              gap: 'var(--space-4)',
+            }}
+          >
+            <h3 style={{ fontSize: 'var(--text-md)' }}>Add a room before creating sessions</h3>
+            <p style={{ maxWidth: 420, color: 'var(--color-text-secondary)' }}>
+              Sessions must be assigned to a room. Add one in Rooms above, or choose “+ Create new
+              room” when creating a session.
+            </p>
+            <button
+              id="btn-create-session-empty"
+              type="button"
+              className="btn btn-primary"
+              onClick={openCreate}
+              disabled={!canCreate}
+            >
+              + Create Session
+            </button>
           </div>
         ) : sessions.length === 0 ? (
           <div
@@ -254,11 +299,10 @@ export default function ShowDetail({ showId }: { showId: string }) {
               gap: 'var(--space-4)',
             }}
           >
-            <div style={{ fontSize: '2.5rem' }}>🎙️</div>
             <h3 style={{ fontSize: 'var(--text-md)' }}>No sessions yet</h3>
             <p style={{ maxWidth: 360, color: 'var(--color-text-secondary)' }}>
-              Create a session for each room or stage. Sessions hold live feed state, transcripts,
-              and review workflow.
+              Create a session for each talk or block in a room. Sessions hold live feed state,
+              transcripts, and review workflow.
             </p>
             <button
               id="btn-create-session-empty"
@@ -281,7 +325,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
                     </h3>
                     <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                       {session.friendlyName}
-                      {session.location ? ` · ${session.location}` : ''}
+                      {` · ${resolveRoomName(rooms, session.roomId)}`}
                     </p>
                     <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
                       {formatDateTime(session.scheduledStart)} – {formatDateTime(session.scheduledEnd)}
@@ -330,6 +374,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
         createdBy={user?.uid || ''}
         canCreate={canCreate}
         defaultLanguages={show.defaultLanguages || ['en']}
+        rooms={rooms}
         onClose={() => setModalOpen(false)}
         onCreated={() => setFlash('Session created.')}
       />

@@ -9,7 +9,7 @@ import { assertCorrectFirebaseProject } from '@/lib/firebase/admin'
  * POST /api/tech/unlock
  *
  * Body: { credential: string }
- * Finds the Show with matching techCredential and returns show + sessions.
+ * Finds the Show with matching techCredential and returns show + rooms + sessions.
  * Electron uses this instead of reading Firestore directly.
  */
 export async function POST(request: NextRequest) {

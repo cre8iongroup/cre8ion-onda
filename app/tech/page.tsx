@@ -13,6 +13,7 @@ import {
 import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
 import type { SessionDoc, ShowDoc, WithId } from '@/types'
+import { resolveRoomName } from '@/lib/rooms'
 
 function startOfToday(): Date {
   const d = new Date()
@@ -170,7 +171,9 @@ export default function TechSessionsPage() {
                   </h2>
                   <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                     {session.friendlyName}
-                    {session.location ? ` · ${session.location}` : ''}
+                    {session.roomId
+                      ? ` · ${resolveRoomName(show?.rooms, session.roomId)}`
+                      : ''}
                   </p>
                   <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
                     {formatWhen(session.scheduledStart)}

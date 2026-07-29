@@ -112,7 +112,7 @@ function OperatorInner({ sessionId }: { sessionId: string }) {
           </h1>
           <p style={{ color: 'var(--color-text-secondary)' }}>
             {session.friendlyName}
-            {session.location ? ` · ${session.location}` : ''}
+            {session.roomId ? ` · ${session.roomId}` : ''}
           </p>
         </div>
         <div className="flex gap-2">

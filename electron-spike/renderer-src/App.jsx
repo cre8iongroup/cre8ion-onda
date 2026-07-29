@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
 import {
   limitToLast,
   onChildAdded,
@@ -43,6 +44,7 @@ function OperatorInstructions({ markdown }) {
           skipHtml
           allowedElements={OPERATOR_MD_ALLOWED}
           unwrapDisallowed
+          remarkPlugins={[remarkBreaks]}
           components={{
             a: ({ href, children }) => (
               <a href={href} target="_blank" rel="noreferrer noopener">

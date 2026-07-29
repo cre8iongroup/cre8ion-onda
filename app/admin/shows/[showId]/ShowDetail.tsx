@@ -15,6 +15,7 @@ import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
 import type { SessionDoc, ShowDoc, WithId } from '@/types'
 import CreateSessionModal from './CreateSessionModal'
+import LegalNoticePanel from './LegalNoticePanel'
 import OperatorSettingsPanel from './OperatorSettingsPanel'
 import RoomsPanel, { collectSessionRoomIds } from './RoomsPanel'
 import TechCredentialPanel from './TechCredentialPanel'
@@ -312,6 +313,18 @@ export default function ShowDetail({ showId }: { showId: string }) {
           showId={show.id}
           transcriptionStyle={show.transcriptionStyle}
           operatorInstructions={show.operatorInstructions}
+          canEdit={Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)}
+          onFlash={setFlash}
+        />
+      </section>
+
+      <section style={{ marginBottom: 'var(--space-10)' }}>
+        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
+          Legal notice
+        </h2>
+        <LegalNoticePanel
+          showId={show.id}
+          legalNotice={show.branding?.legalNotice}
           canEdit={Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)}
           onFlash={setFlash}
         />

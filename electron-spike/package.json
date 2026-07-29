@@ -27,7 +27,15 @@
       "preload.js",
       "lib/**/*",
       "renderer/**/*",
-      "package.json"
+      "package.json",
+      {
+        "from": "../lib/recall",
+        "to": "lib/recall",
+        "filter": [
+          "**/*",
+          "!**/*.{ts,tsx,md}"
+        ]
+      }
     ],
     "win": {
       "target": [

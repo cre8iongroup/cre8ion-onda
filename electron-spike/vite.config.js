@@ -1,15 +1,35 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /**
- * Renderer build for Electron (Onda Operator).
- * Exposes NEXT_PUBLIC_* from electron-spike/.env for Firebase client RTDB.
+ * Prefer values baked by scripts/inject-build-config.js (.env.build → generated JSON).
+ * Fall back to Vite loadEnv (.env / mode files) for ad-hoc local renderer builds.
  * Never inject Admin / service-account credentials here.
  */
+function loadOperatorPublicEnv(mode) {
+  const generatedPath = path.resolve(__dirname, 'lib/buildConfig.generated.json')
+  if (fs.existsSync(generatedPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(generatedPath, 'utf8'))
+    } catch (err) {
+      console.warn('[vite] failed to read buildConfig.generated.json:', err.message)
+    }
+  }
+  return loadEnv(mode, path.resolve(__dirname), ['NEXT_PUBLIC_', 'VITE_'])
+}
+
 export default defineConfig(({ mode }) => {
+  const env = loadOperatorPublicEnv(mode)
   const envDir = path.resolve(__dirname)
-  const env = loadEnv(mode, envDir, ['NEXT_PUBLIC_', 'VITE_'])
+
+  function pub(key) {
+    return env[key] || process.env[key] || ''
+  }
 
   return {
     plugins: [react()],
@@ -18,33 +38,22 @@ export default defineConfig(({ mode }) => {
     envDir,
     envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
     define: {
-      // Ensure values from dotenv/.env are available even when not VITE_-prefixed load quirks
-      'import.meta.env.NEXT_PUBLIC_FIREBASE_API_KEY': JSON.stringify(
-        env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
-      ),
+      'import.meta.env.NEXT_PUBLIC_FIREBASE_API_KEY': JSON.stringify(pub('NEXT_PUBLIC_FIREBASE_API_KEY')),
       'import.meta.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN': JSON.stringify(
-        env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
+        pub('NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
       ),
       'import.meta.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID': JSON.stringify(
-        env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || '',
+        pub('NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
       ),
       'import.meta.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET': JSON.stringify(
-        env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
-          process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
-          '',
+        pub('NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
       ),
       'import.meta.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(
-        env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ||
-          process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ||
-          '',
+        pub('NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
       ),
-      'import.meta.env.NEXT_PUBLIC_FIREBASE_APP_ID': JSON.stringify(
-        env.NEXT_PUBLIC_FIREBASE_APP_ID || process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '',
-      ),
+      'import.meta.env.NEXT_PUBLIC_FIREBASE_APP_ID': JSON.stringify(pub('NEXT_PUBLIC_FIREBASE_APP_ID')),
       'import.meta.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL': JSON.stringify(
-        env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ||
-          process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ||
-          '',
+        pub('NEXT_PUBLIC_FIREBASE_DATABASE_URL'),
       ),
     },
     build: {

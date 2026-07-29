@@ -83,6 +83,11 @@ export interface ShowDoc {
   defaultLanguages: string[]  // e.g. ['en', 'es', 'pt', 'fr']
   portalPublished: boolean
   /**
+   * Per-show room catalog for session placement + Onda Operator room select.
+   * Empty/missing until an admin adds rooms; session create is blocked when empty.
+   */
+  rooms?: ShowRoom[]
+  /**
    * Shared Onda Operator / Electron unlock password for this show (v1).
    * Auth email is derived as tech+{portalSlug}@onda.tech — see lib/tech/credentials.ts.
    * Prefer setting via Admin UI so the matching Auth user is provisioned.
@@ -92,6 +97,12 @@ export interface ShowDoc {
   archivedAt?: Timestamp
   createdAt: Timestamp
   createdBy: string
+}
+
+/** Show-scoped physical room (Admin-managed; Operator read-only). */
+export interface ShowRoom {
+  id: string
+  name: string
 }
 
 // ─────────────────────────────────────────────
@@ -116,7 +127,8 @@ export interface ApprovalState {
 
 export interface SessionDoc {
   title: string
-  location: string          // physical room e.g. "W206"
+  /** References ShowDoc.rooms[].id — required; free-text location removed. */
+  roomId: string
   friendlyName: string      // branded e.g. "Main Stage"
   scheduledStart: Timestamp
   scheduledEnd: Timestamp

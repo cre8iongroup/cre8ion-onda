@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { INSTALLERS } from './installers'
 import './download.css'
 
 export const metadata: Metadata = {
@@ -7,12 +8,9 @@ export const metadata: Metadata = {
   description: 'Download Onda Operator for Windows. Mac installer coming soon.',
 }
 
-/** Stable Storage object — overwrite in place on each new Windows build. */
-const WINDOWS_INSTALLER_PATH = 'installers/OndaOperatorSetup.exe'
-const WINDOWS_INSTALLER_BUCKET = 'cre8ion-onda.firebasestorage.app'
-const WINDOWS_INSTALLER_URL = `https://firebasestorage.googleapis.com/v0/b/${WINDOWS_INSTALLER_BUCKET}/o/${encodeURIComponent(WINDOWS_INSTALLER_PATH)}?alt=media`
-
 export default function DownloadPage() {
+  const windows = INSTALLERS.windows
+
   return (
     <div className="dl-shell">
       <header className="dl-topbar">
@@ -35,16 +33,12 @@ export default function DownloadPage() {
           <div className="dl-card">
             <h2>Windows</h2>
             <p>Onda Operator for Windows (x64).</p>
-            <a
-              className="btn btn-primary"
-              href={WINDOWS_INSTALLER_URL}
-              download="OndaOperatorSetup.exe"
-            >
+            <a className="btn btn-primary" href="/download-success?platform=windows">
               Download for Windows
             </a>
             <p className="dl-note">
               For Windows only. Unsigned installer — click through the SmartScreen prompt on first
-              run.
+              run. ({windows.filename})
             </p>
           </div>
 

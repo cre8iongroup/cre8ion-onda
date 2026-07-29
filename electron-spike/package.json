@@ -18,6 +18,13 @@
   "engines": {
     "node": ">=20"
   },
+  "allowScripts": {
+    "@firebase/util@1.12.1": true,
+    "@recallai/desktop-sdk@2.0.26": true,
+    "electron@34.5.8": true,
+    "electron-winstaller@5.4.0": true,
+    "protobufjs@7.6.5": true
+  },
   "build": {
     "appId": "com.cre8ion.onda.operator",
     "productName": "Onda Operator",

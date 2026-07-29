@@ -77,3 +77,6 @@ public/fallback-*.js
 /electron-spike/renderer/
 # electron-builder output (e.g. `npm run build:win`)
 /electron-spike/dist/
+# Icon generation intermediates (committed artifact is build/icon.ico only)
+/electron-spike/build/_icon-png/
+/electron-spike/build/_icon-preview/

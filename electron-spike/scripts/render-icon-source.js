@@ -1,5 +1,6 @@
 /**
- * Re-render build/icon-source.png from the login-page `.auth-logo` CSS.
+ * Re-render build/icon-source.png as a Windows app-icon tile:
+ * rounded-square (#0a0a0f / --color-bg) + centered .auth-logo wave mark.
  *
  * Not a permanent workflow dependency — run only when brand CSS changes:
  *   npm install --no-save puppeteer sharp
@@ -8,11 +9,18 @@
  *
  * Login page uses class `auth-logo` (app/globals.css), not Electron's
  * `.op-brand-mark-lg` (solid --color-primary-light).
+ *
+ * Rounded corners are baked into pixels (Windows does not auto-mask).
  */
 
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
+
+const CANVAS = 1024
+const CORNER_RATIO = 0.22
+const MARK_RATIO = 0.6
+const BG = '#0a0a0f' // --color-bg (login auth-shell base)
 
 async function main() {
   let puppeteer
@@ -87,7 +95,7 @@ async function main() {
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none'],
   })
-  const rawPath = path.join(buildDir, '_icon-source-raw.png')
+  const rawPath = path.join(buildDir, '_icon-mark-raw.png')
   try {
     const page = await browser.newPage()
     await page.setViewport({ width: 512, height: 512, deviceScaleFactor: 1 })
@@ -98,31 +106,40 @@ async function main() {
     await new Promise((r) => setTimeout(r, 400))
     const el = await page.$('#canvas')
     await el.screenshot({ path: rawPath, omitBackground: true, type: 'png' })
-
-    // Trim → contain into square with ~14% padding (centered by sharp contain)
-    const inner = 440
-    await sharp(rawPath)
-      .trim({ threshold: 5 })
-      .resize(inner, inner, {
-        fit: 'contain',
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
-      })
-      .extend({
-        top: Math.round((512 - inner) / 2),
-        bottom: Math.ceil((512 - inner) / 2),
-        left: Math.round((512 - inner) / 2),
-        right: Math.ceil((512 - inner) / 2),
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
-      })
-      .png()
-      .toFile(sourcePng)
-
-    fs.unlinkSync(rawPath)
-    console.log(`Wrote ${path.relative(root, sourcePng)} (from .auth-logo CSS via Chromium)`)
   } finally {
     await browser.close()
     fs.unlinkSync(tmpHtml)
   }
+
+  const markSize = Math.round(CANVAS * MARK_RATIO)
+  const markScaled = await sharp(rawPath)
+    .trim({ threshold: 5 })
+    .resize(markSize, markSize, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png()
+    .toBuffer({ resolveWithObject: true })
+
+  const radius = Math.round(CANVAS * CORNER_RATIO)
+  const tileSvg = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS}" height="${CANVAS}" viewBox="0 0 ${CANVAS} ${CANVAS}">
+  <rect width="${CANVAS}" height="${CANVAS}" rx="${radius}" ry="${radius}" fill="${BG}"/>
+</svg>`)
+
+  const left = Math.round((CANVAS - markScaled.info.width) / 2)
+  const top = Math.round((CANVAS - markScaled.info.height) / 2)
+
+  await sharp(tileSvg)
+    .composite([{ input: markScaled.data, left, top }])
+    .png()
+    .toFile(sourcePng)
+
+  fs.unlinkSync(rawPath)
+  console.log(
+    `Wrote ${path.relative(root, sourcePng)} ` +
+      `(${CANVAS}² tile ${BG}, rx=${radius}/${(CORNER_RATIO * 100).toFixed(0)}%, mark~${MARK_RATIO * 100}%)`,
+  )
 }
 
 main().catch((err) => {

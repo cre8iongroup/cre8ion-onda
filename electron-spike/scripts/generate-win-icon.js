@@ -1,14 +1,9 @@
 /**
- * Build electron-spike/build/icon.ico from the CSS-rendered source PNG.
+ * Build electron-spike/build/icon.ico from build/icon-source.png.
  *
- * Source of truth for the mark styling: login page `.auth-logo` in
- * app/globals.css (NOT Electron `.op-brand-mark-lg`, which is solid purple).
- * Login markup: <div className="auth-logo">〜 Onda</div>
- *
- * High-res source: build/icon-source.png (purple→teal gradient 〜 on
- * transparent). Re-render that PNG with a headless browser if CSS changes —
- * see scripts/render-icon-source.js (optional; needs puppeteer via
- * `npm install --no-save puppeteer`).
+ * Source tile: rounded-square (#0a0a0f) + centered purple→teal 〜 mark
+ * (login `.auth-logo` CSS). Re-render with scripts/render-icon-source.js
+ * if brand CSS changes (optional; needs puppeteer via --no-save).
  *
  * Usage (from electron-spike/):
  *   npm install --no-save sharp png-to-ico
@@ -42,7 +37,7 @@ async function main() {
   if (!fs.existsSync(sourcePng)) {
     console.error(
       `Missing ${path.relative(root, sourcePng)}.\n` +
-        'Re-render it first: npm install --no-save puppeteer && node scripts/render-icon-source.js',
+        'Re-render it first: npm install --no-save puppeteer sharp && node scripts/render-icon-source.js',
     )
     process.exit(1)
   }

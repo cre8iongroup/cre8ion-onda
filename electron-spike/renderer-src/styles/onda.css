@@ -627,12 +627,6 @@ p {
   align-content: start;
 }
 
-.op-grid-cell-status {
-  grid-column: 1 / -1;
-  min-height: auto;
-  align-items: flex-start;
-}
-
 .op-grid-cell {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
@@ -696,9 +690,39 @@ p {
   margin-bottom: var(--space-5);
 }
 
+.op-record-header-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.op-record-back {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 var(--space-1);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.op-record-back:hover:not(:disabled) {
+  color: var(--color-text-primary);
+}
+
+.op-record-back:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .op-record-title {
   font-size: var(--text-xl);
-  margin: 0 0 var(--space-1);
+  margin: 0;
   line-height: 1.25;
 }
 
@@ -712,6 +736,13 @@ p {
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+.op-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  align-content: start;
 }
 
 .op-room-list,

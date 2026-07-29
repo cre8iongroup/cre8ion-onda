@@ -306,8 +306,18 @@ export async function updateRtdbJson(
   await rtdbRestWrite('PATCH', path, value, opts)
 }
 
+/**
+ * Delete an RTDB path (and all children) via REST DELETE.
+ */
+export async function deleteRtdbJson(
+  path: string,
+  opts?: { timeoutMs?: number },
+): Promise<void> {
+  await rtdbRestWrite('DELETE', path, undefined, opts)
+}
+
 async function rtdbRestWrite(
-  method: 'POST' | 'PUT' | 'PATCH',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   value: unknown,
   opts?: { timeoutMs?: number },
@@ -356,7 +366,7 @@ async function rtdbRestWrite(
     const res = await fetch(url, {
       method,
       headers,
-      body: JSON.stringify(value),
+      body: method === 'DELETE' ? undefined : JSON.stringify(value),
       signal: controller.signal,
     })
     const text = await res.text()

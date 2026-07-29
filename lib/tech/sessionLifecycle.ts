@@ -13,6 +13,7 @@ import { FieldPath, FieldValue, type DocumentReference } from 'firebase-admin/fi
 import {
   getAdminAccessToken,
   getAdminFirestore,
+  deleteRtdbJson,
   setRtdbJson,
   updateRtdbJson,
 } from '@/lib/firebase/admin'
@@ -386,6 +387,9 @@ export async function resolveSessionIdFromRecordingId(
 /**
  * Mark session ended via RTDB feedState. Triggers onSessionEnd CF which
  * migrates chunks. Also writes Firestore feedState=ended for local spike.
+ *
+ * No-ops when Firestore feedState is already `standby` so a late
+ * sdk_upload.complete cannot undo an Admin reset.
  */
 export async function markSessionEndedFromRecall(opts: {
   sessionId: string
@@ -393,7 +397,12 @@ export async function markSessionEndedFromRecall(opts: {
   recordingId?: string | null
   audioStoragePath?: string | null
   reason: string
-}): Promise<{ ok: true; sessionId: string; showId: string | null }> {
+}): Promise<{
+  ok: true
+  sessionId: string
+  showId: string | null
+  skipped?: 'already_standby'
+}> {
   const sessionId = opts.sessionId
   if (!sessionId) {
     throw new TechLifecycleError(400, 'missing_session_id', 'sessionId is required to end')
@@ -407,6 +416,38 @@ export async function markSessionEndedFromRecall(opts: {
     showId = liveMeta?.showId ?? null
   }
 
+  const firestore = getAdminFirestore()
+  let sessionRef: DocumentReference | null = null
+
+  if (showId) {
+    sessionRef = firestore.doc(`shows/${showId}/sessions/${sessionId}`)
+  } else {
+    const sessionsQuery = await firestore
+      .collectionGroup('sessions')
+      .where(FieldPath.documentId(), '==', sessionId)
+      .limit(1)
+      .get()
+    if (!sessionsQuery.empty) {
+      sessionRef = sessionsQuery.docs[0].ref
+      showId = sessionRef.parent.parent?.id ?? null
+    }
+  }
+
+  if (sessionRef) {
+    const snap = await sessionRef.get()
+    if (snap.exists) {
+      const current = asFeedState((snap.data() as SessionDoc | undefined)?.feedState)
+      if (current === 'standby') {
+        console.info('[sessionLifecycle] markSessionEnded: skip — session already standby', {
+          sessionId,
+          showId,
+          reason: opts.reason,
+        })
+        return { ok: true, sessionId, showId, skipped: 'already_standby' }
+      }
+    }
+  }
+
   await updateRtdbJson(rtdbLiveSessionPath(sessionId), {
     feedState: 'ended',
     endedAt: Date.now(),
@@ -415,7 +456,6 @@ export async function markSessionEndedFromRecall(opts: {
     ...(opts.audioStoragePath ? { audioStoragePath: opts.audioStoragePath } : {}),
   })
 
-  const firestore = getAdminFirestore()
   const sessionPatch: Record<string, unknown> = {
     feedState: 'ended',
   }
@@ -425,25 +465,175 @@ export async function markSessionEndedFromRecall(opts: {
     sessionPatch.audioStoredAt = FieldValue.serverTimestamp()
   }
 
-  if (showId) {
-    await firestore.doc(`shows/${showId}/sessions/${sessionId}`).update(sessionPatch)
+  if (sessionRef) {
+    await sessionRef.update(sessionPatch)
   } else {
-    const sessionsQuery = await firestore
-      .collectionGroup('sessions')
-      .where(FieldPath.documentId(), '==', sessionId)
-      .limit(1)
-      .get()
-
-    if (!sessionsQuery.empty) {
-      showId = sessionsQuery.docs[0].ref.parent.parent?.id ?? null
-      await sessionsQuery.docs[0].ref.update(sessionPatch)
-    } else {
-      console.warn(
-        '[sessionLifecycle] markSessionEnded: could not resolve showId; RTDB feedState=ended set',
-        { sessionId },
-      )
-    }
+    console.warn(
+      '[sessionLifecycle] markSessionEnded: could not resolve showId; RTDB feedState=ended set',
+      { sessionId },
+    )
   }
 
   return { ok: true, sessionId, showId }
+}
+
+export type RecallStopProbeOutcome = {
+  outcome: 'skipped' | 'probed' | 'failed'
+  reason: string
+  recordingId: string | null
+  recordingStatus?: unknown
+  detail?: string
+}
+
+/**
+ * Admin override: force any feedState back to standby so the session is
+ * immediately re-testable. Bypasses normal transition guards.
+ *
+ * Clears live binding (Firestore recording fields + RTDB live node +
+ * recordingIndex). Does not wipe archived transcripts / aiSummary.
+ *
+ * Recall Desktop capture can only be stopped from the Mac SDK — v1 probes
+ * Retrieve Recording when an id is known and logs skipped/desktop_sdk_stop_only.
+ */
+export async function resetSessionToStandby(opts: {
+  showId: string
+  sessionId: string
+  performedBy: string
+}): Promise<{
+  session: SessionSummary
+  previousFeedState: FeedState
+  recallStop: RecallStopProbeOutcome
+}> {
+  const firestore = getAdminFirestore()
+  const showRef = firestore.doc(`shows/${opts.showId}`)
+  const showSnap = await showRef.get()
+  if (!showSnap.exists) {
+    throw new TechLifecycleError(404, 'show_not_found', 'Show not found')
+  }
+
+  const { ref: sessionRef, data, summary } = await loadSession(showRef, opts.sessionId)
+  const previousFeedState = asFeedState(data.feedState)
+
+  const liveMeta = (await rtdbGetJson(rtdbLiveSessionPath(opts.sessionId))) as {
+    recordingId?: string
+  } | null
+  const recordingId =
+    (typeof data.recordingId === 'string' && data.recordingId) ||
+    (typeof liveMeta?.recordingId === 'string' && liveMeta.recordingId) ||
+    null
+
+  const recallStop = await probeRecallRecordingForReset(recordingId)
+
+  await sessionRef.update({
+    feedState: 'standby',
+    recordingId: FieldValue.delete(),
+    audioStoragePath: FieldValue.delete(),
+    audioStoredAt: FieldValue.delete(),
+  })
+
+  // Best-effort RTDB cleanup — failures should not leave Firestore mid-reset.
+  try {
+    await deleteRtdbJson(rtdbLiveSessionPath(opts.sessionId))
+  } catch (err) {
+    console.warn('[sessionLifecycle] resetSessionToStandby: liveSessions delete failed', {
+      sessionId: opts.sessionId,
+      message: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  if (recordingId) {
+    try {
+      await deleteRtdbJson(rtdbRecordingIndexPath(recordingId))
+    } catch (err) {
+      console.warn('[sessionLifecycle] resetSessionToStandby: recordingIndex delete failed', {
+        recordingId,
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  await firestore.collection('auditLog').add({
+    action: 'SESSION_FEED_RESET',
+    performedBy: opts.performedBy,
+    performedAt: FieldValue.serverTimestamp(),
+    showId: opts.showId,
+    sessionId: opts.sessionId,
+    metadata: {
+      source: 'admin_reset',
+      previousFeedState,
+      recordingId,
+      recallStop,
+    },
+  })
+
+  console.info('[sessionLifecycle] resetSessionToStandby', {
+    showId: opts.showId,
+    sessionId: opts.sessionId,
+    previousFeedState,
+    recallStop,
+    performedBy: opts.performedBy,
+  })
+
+  return {
+    session: { ...summary, feedState: 'standby' },
+    previousFeedState,
+    recallStop,
+  }
+}
+
+async function probeRecallRecordingForReset(
+  recordingId: string | null,
+): Promise<RecallStopProbeOutcome> {
+  if (!recordingId) {
+    return {
+      outcome: 'skipped',
+      reason: 'no_recording_bound',
+      recordingId: null,
+    }
+  }
+
+  const apiKey = process.env.RECALL_API_KEY?.trim()
+  const region = process.env.RECALL_REGION?.trim() || 'us-west-2'
+  if (!apiKey) {
+    return {
+      outcome: 'skipped',
+      reason: 'desktop_sdk_stop_only',
+      recordingId,
+      detail: 'RECALL_API_KEY not configured; cannot probe Retrieve Recording',
+    }
+  }
+
+  try {
+    const res = await fetch(`https://${region}.recall.ai/api/v1/recording/${recordingId}/`, {
+      method: 'GET',
+      headers: {
+        accept: 'application/json',
+        Authorization: `Token ${apiKey}`,
+      },
+    })
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    if (!res.ok) {
+      return {
+        outcome: 'failed',
+        reason: 'retrieve_recording_failed',
+        recordingId,
+        detail: `HTTP ${res.status}`,
+        recordingStatus: json.status ?? null,
+      }
+    }
+    // Desktop SDK stop is client-only — probe succeeded but we did not stop.
+    return {
+      outcome: 'skipped',
+      reason: 'desktop_sdk_stop_only',
+      recordingId,
+      recordingStatus: json.status ?? null,
+    }
+  } catch (err) {
+    return {
+      outcome: 'failed',
+      reason: 'retrieve_recording_threw',
+      recordingId,
+      detail: err instanceof Error ? err.message : String(err),
+    }
+  }
 }

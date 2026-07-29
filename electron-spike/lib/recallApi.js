@@ -44,6 +44,9 @@ async function createSdkUpload({
             model: 'nova-3',
             language: languageCode || 'en',
             smart_format: true,
+            // Deepgram defaults interim_results to false — without this, only
+            // finalized batches arrive (no smooth transcript.partial_data).
+            interim_results: true,
           },
         },
       },

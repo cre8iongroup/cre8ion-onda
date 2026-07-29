@@ -71,6 +71,9 @@ export async function POST(request: NextRequest) {
             model: 'nova-3',
             language: body.languageCode ?? 'en',
             smart_format: true,
+            // Deepgram defaults interim_results to false — without this, only
+            // finalized batches arrive (no smooth transcript.partial_data).
+            interim_results: true,
           },
         },
       },

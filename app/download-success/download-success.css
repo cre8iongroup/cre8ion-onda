@@ -56,6 +56,14 @@
   color: var(--color-primary-light);
 }
 
+.dl-steps-alt {
+  margin: var(--space-3) 0 0;
+  padding-left: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .dl-generic {
   display: flex;
   flex-direction: column;

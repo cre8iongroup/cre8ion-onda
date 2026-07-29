@@ -51,18 +51,21 @@ function MacInstructions() {
         <strong>Onda Operator</strong> into <strong>Applications</strong>.
       </li>
       <li>
-        <strong>Expect Gatekeeper.</strong> On first launch, macOS will likely block the app with a
-        message that it <em>cannot be opened because the developer cannot be verified</em> (or that
-        Apple could not verify it is free of malware). That is expected for this internal build —
-        the app is not notarized.
-      </li>
-      <li>
-        <strong>Allow the app (macOS 15 Sequoia / 16 Tahoe).</strong> Click <strong>Done</strong> on
-        the block dialog (do not Move to Trash). Open{' '}
-        <strong>System Settings → Privacy &amp; Security</strong>, scroll to the{' '}
-        <strong>Security</strong> section, and click <strong>Open Anyway</strong> next to the
-        message that Onda Operator was blocked. Confirm with <strong>Open Anyway</strong> again and
-        enter your Mac password if prompted.
+        <strong>Expect a security warning.</strong> macOS will likely block the app on first launch
+        since it isn&apos;t notarized. That is expected for this internal unsigned build — not a sign
+        of a broken download. Try one of these:
+        <ul className="dl-steps-alt">
+          <li>
+            Right-click (or Control-click) the app in <strong>Applications</strong> →{' '}
+            <strong>Open</strong> → <strong>Open</strong>, if that option appears.
+          </li>
+          <li>
+            If that doesn&apos;t work: open <strong>System Settings</strong> (or{' '}
+            <strong>System Preferences</strong> on older macOS) →{' '}
+            <strong>Privacy &amp; Security</strong> → look for a message about the app being
+            blocked, and click <strong>Open Anyway</strong>.
+          </li>
+        </ul>
       </li>
       <li>
         <strong>Launch normally.</strong> After you approve it once, you can open Onda Operator from

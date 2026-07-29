@@ -18,7 +18,7 @@ import {
   updateRtdbJson,
 } from '@/lib/firebase/admin'
 import { rtdbLiveSessionPath, rtdbRecordingIndexPath } from '@/lib/rtdbPaths'
-import type { FeedState, SessionDoc, ShowDoc, ShowRoom } from '@/types'
+import type { FeedState, SessionDoc, ShowDoc, ShowRoom, TranscriptionStyle } from '@/types'
 import { resolveRoomName } from '@/lib/rooms'
 
 export type SessionSummary = {
@@ -39,6 +39,10 @@ export type UnlockedShow = {
   name: string
   clientName: string
   portalURL: string | null
+  /** Deepgram style for recording-start; defaults to standard if missing on older docs. */
+  transcriptionStyle: TranscriptionStyle
+  /** Markdown source for Operator UI; null when empty/missing. */
+  operatorInstructions: string | null
 }
 
 export type UnlockedRoom = {
@@ -140,12 +144,20 @@ export async function unlockShowByCredential(
       return aT.localeCompare(bT)
     })
 
+  const instructions =
+    typeof showData.operatorInstructions === 'string'
+      ? showData.operatorInstructions.trim()
+      : ''
+
   return {
     show: {
       id: showDoc.id,
       name: showData.name,
       clientName: showData.clientName,
       portalURL: showData.branding?.portalURL ?? null,
+      transcriptionStyle:
+        showData.transcriptionStyle === 'lightweight' ? 'lightweight' : 'standard',
+      operatorInstructions: instructions.length > 0 ? instructions : null,
     },
     rooms,
     sessions,

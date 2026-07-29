@@ -1,20 +1,35 @@
 /**
- * Deepgram streaming A/B presets for live caption speed/format tuning.
+ * Deepgram streaming presets for live caption formatting.
  *
- * Switch for a listening test (pick ONE):
- *   1. Edit `active` in deepgramStreamingPresets.json  → "baseline" | "punctuate" | "punctuate_endpointing"
- *   2. Or set env DEEPGRAM_STREAMING_PRESET to the same name (overrides JSON `active`)
+ * Primary (production): show.transcriptionStyle → TRANSCRIPTION_STYLE_TO_PRESET
+ *   → pass presetId into buildDeepgramStreamingConfig.
+ * Fallback (dev / missing show field):
+ *   1. Explicit presetId argument
+ *   2. Env DEEPGRAM_STREAMING_PRESET
+ *   3. JSON `active`
+ *   4. baseline
  *
- * Then restart Operator (and Next if using /api/recall/sdk-upload).
- * Do not change model/language here — callers pass those.
+ * Style changes apply at Operator unlock / recording-start — re-unlock or
+ * restart Operator after Admin changes mid-show. Do not change model/language
+ * here — callers pass those.
  */
 
 import presetsFile from './deepgramStreamingPresets.json'
+import type { TranscriptionStyle } from '@/types'
 
 export type DeepgramStreamingPresetId =
   | 'baseline'
   | 'punctuate'
   | 'punctuate_endpointing'
+
+/** Single source of truth: Admin Transcription style → Deepgram preset id. */
+export const TRANSCRIPTION_STYLE_TO_PRESET: Record<
+  TranscriptionStyle,
+  DeepgramStreamingPresetId
+> = {
+  standard: 'baseline',
+  lightweight: 'punctuate',
+}
 
 type PresetFile = {
   active: string
@@ -29,6 +44,19 @@ type PresetFile = {
 }
 
 const file = presetsFile as PresetFile
+
+/**
+ * Map a show transcriptionStyle to a preset id.
+ * Unknown / missing → null (caller should fall through to env/JSON).
+ */
+export function presetIdForTranscriptionStyle(
+  style?: string | null,
+): DeepgramStreamingPresetId | null {
+  if (style === 'standard' || style === 'lightweight') {
+    return TRANSCRIPTION_STYLE_TO_PRESET[style]
+  }
+  return null
+}
 
 export function resolveDeepgramStreamingPresetId(
   override?: string | null,

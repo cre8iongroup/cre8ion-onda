@@ -13,8 +13,9 @@ import { buildDeepgramStreamingConfig } from '@/lib/recall/deepgramStreamingPres
  * Requires RECALL_API_KEY (+ optional RECALL_REGION, default us-west-2).
  * Not authenticated beyond env presence — spike only; lock down before prod.
  *
- * Deepgram A/B: lib/recall/deepgramStreamingPresets.json (`active`) or
- * DEEPGRAM_STREAMING_PRESET env.
+ * Deepgram A/B / fallback: lib/recall/deepgramStreamingPresets.json (`active`) or
+ * DEEPGRAM_STREAMING_PRESET env. Production Operator path uses show.transcriptionStyle
+ * via Electron createSdkUpload — this route has no show context.
  */
 export async function POST(request: NextRequest) {
   const apiKey = process.env.RECALL_API_KEY

@@ -1,14 +1,26 @@
 /**
- * Deepgram streaming A/B presets (Electron mirror of lib/recall/deepgramStreamingPresets.*).
+ * Deepgram streaming presets (Electron mirror of lib/recall/deepgramStreamingPresets.*).
  *
- * Switch for a listening test (pick ONE):
- *   1. Edit `active` in ../../lib/recall/deepgramStreamingPresets.json
- *   2. Or set DEEPGRAM_STREAMING_PRESET in electron-spike/.env (overrides JSON)
+ * Primary: show.transcriptionStyle → TRANSCRIPTION_STYLE_TO_PRESET → presetId.
+ * Fallback when style absent: DEEPGRAM_STREAMING_PRESET env, then JSON `active`, then baseline.
  *
- * Restart Operator after changing. Keep this file's require path in sync with Next.
+ * Keep in sync with lib/recall/deepgramStreamingPresets.ts.
  */
 
 const presetsFile = require('../../lib/recall/deepgramStreamingPresets.json')
+
+/** Single source of truth: Admin Transcription style → Deepgram preset id. */
+const TRANSCRIPTION_STYLE_TO_PRESET = {
+  standard: 'baseline',
+  lightweight: 'punctuate',
+}
+
+function presetIdForTranscriptionStyle(style) {
+  if (style === 'standard' || style === 'lightweight') {
+    return TRANSCRIPTION_STYLE_TO_PRESET[style]
+  }
+  return null
+}
 
 function resolvePresetId(override) {
   const raw = String(
@@ -39,6 +51,8 @@ function buildDeepgramStreamingConfig({ language, presetId } = {}) {
 }
 
 module.exports = {
+  TRANSCRIPTION_STYLE_TO_PRESET,
+  presetIdForTranscriptionStyle,
   buildDeepgramStreamingConfig,
   resolvePresetId,
 }

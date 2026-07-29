@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Markdown from 'react-markdown'
 import {
   limitToLast,
   onChildAdded,
@@ -12,6 +13,50 @@ import { createInputMeterTap } from './lib/inputMeterTap.js'
 import { getFirebaseConfigStatus, getRendererDatabase } from './lib/firebaseClient.js'
 import { buildCaptionDisplayLines } from './lib/captionLines.js'
 import { networkHealthColor } from './lib/networkHealth.js'
+
+/** Safe subset for Operator Instructions — no images, tables, code, HTML, etc. */
+const OPERATOR_MD_ALLOWED = [
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'p',
+  'strong',
+  'em',
+  'a',
+  'ul',
+  'ol',
+  'li',
+  'br',
+]
+
+function OperatorInstructions({ markdown }) {
+  const source = typeof markdown === 'string' ? markdown.trim() : ''
+  if (!source) return null
+  return (
+    <div className="op-instructions" aria-label="Operator instructions">
+      <div className="op-grid-label">Instructions</div>
+      <div className="op-instructions-body">
+        <Markdown
+          skipHtml
+          allowedElements={OPERATOR_MD_ALLOWED}
+          unwrapDisallowed
+          components={{
+            a: ({ href, children }) => (
+              <a href={href} target="_blank" rel="noreferrer noopener">
+                {children}
+              </a>
+            ),
+          }}
+        >
+          {source}
+        </Markdown>
+      </div>
+    </div>
+  )
+}
 
 function operatorFeedLabel(feedState) {
   switch (feedState) {
@@ -377,6 +422,7 @@ export default function App() {
       showId: show.id,
       showName: show.name,
       session: target,
+      transcriptionStyle: show.transcriptionStyle === 'lightweight' ? 'lightweight' : 'standard',
     })
     if (!result.ok) {
       setSessionError(result.error || 'Could not select session')
@@ -807,6 +853,8 @@ export default function App() {
                   Open Network Settings
                 </button>
               </div>
+
+              <OperatorInstructions markdown={show?.operatorInstructions} />
             </div>
           </div>
         </section>

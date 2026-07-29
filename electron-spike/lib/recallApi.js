@@ -38,9 +38,15 @@ async function createSdkUpload({
       video_mixed_mp4: null,
       transcript: {
         provider: {
-          recallai_streaming: {
-            mode: 'prioritize_low_latency',
-            language_code: languageCode,
+          // Deepgram via Recall — smart_format applies punctuation/casing on finals.
+          // Requires Deepgram API key in Recall transcription dashboard (us-west-2).
+          deepgram_streaming: {
+            model: 'nova-3',
+            language: languageCode || 'en',
+            smart_format: true,
+            // Deepgram defaults interim_results to false — without this, only
+            // finalized batches arrive (no smooth transcript.partial_data).
+            interim_results: true,
           },
         },
       },

@@ -698,6 +698,7 @@ ipcMain.handle('spike:unlock', async (_evt, credential) => {
     sendLog('info', 'Show unlocked', {
       showId: result.show?.id,
       name: result.show?.name,
+      roomCount: result.rooms?.length ?? 0,
       sessionCount: result.sessions?.length ?? 0,
     })
     return { ok: true, ...result, credential }

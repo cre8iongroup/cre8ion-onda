@@ -624,6 +624,13 @@ p {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-3);
+  align-content: start;
+}
+
+.op-grid-cell-status {
+  grid-column: 1 / -1;
+  min-height: auto;
+  align-items: flex-start;
 }
 
 .op-grid-cell {
@@ -680,9 +687,72 @@ p {
 .op-net-yellow { background: var(--color-warning); }
 .op-net-red { background: var(--color-danger); }
 
-.op-controls-below {
-  margin-top: var(--space-6);
-  justify-content: center;
+.op-record-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+
+.op-record-title {
+  font-size: var(--text-xl);
+  margin: 0 0 var(--space-1);
+  line-height: 1.25;
+}
+
+.op-record-room {
+  margin: 0;
+}
+
+.op-record-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.op-room-list,
+.op-session-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.op-room-card,
+.op-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+}
+
+.op-room-card-name,
+.op-session-row-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.op-session-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.op-sessions-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 

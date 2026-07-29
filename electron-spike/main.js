@@ -14,7 +14,51 @@ const fs = require('fs')
 const { app, BrowserWindow, ipcMain, systemPreferences, shell } = require('electron')
 const dotenv = require('dotenv')
 
-dotenv.config({ path: path.join(__dirname, '.env') })
+/**
+ * Config is baked at build time into lib/buildConfig.generated.json
+ * (from gitignored .env.build via `npm run inject-config` / `build:win`).
+ * Packaged installs must NOT depend on a runtime .env beside the .exe.
+ * Unpackaged local dev may still overlay electron-spike/.env via dotenv.
+ */
+function loadBuildConfig() {
+  const generatedPath = path.join(__dirname, 'lib', 'buildConfig.generated.json')
+  if (!fs.existsSync(generatedPath)) {
+    if (app.isPackaged) {
+      throw new Error(
+        'Missing baked build config (lib/buildConfig.generated.json). Rebuild with npm run build:win.',
+      )
+    }
+    return {}
+  }
+  return JSON.parse(fs.readFileSync(generatedPath, 'utf8'))
+}
+
+const BUILD_CONFIG = loadBuildConfig()
+
+if (!app.isPackaged) {
+  dotenv.config({ path: path.join(__dirname, '.env') })
+}
+
+/** Packaged: baked values win. Unpackaged: .env overrides, then baked, then fallback. */
+function env(key, fallback = '') {
+  if (app.isPackaged) {
+    const baked = BUILD_CONFIG[key]
+    if (baked !== undefined && baked !== null && String(baked) !== '') return String(baked)
+    return fallback
+  }
+  if (process.env[key] !== undefined && process.env[key] !== '') return process.env[key]
+  const baked = BUILD_CONFIG[key]
+  if (baked !== undefined && baked !== null && String(baked) !== '') return String(baked)
+  return fallback
+}
+
+// Hydrate process.env so modules that read it directly (e.g. Deepgram presets) see values.
+for (const [key, value] of Object.entries(BUILD_CONFIG)) {
+  if (value === undefined || value === null || String(value) === '') continue
+  if (app.isPackaged || !process.env[key]) {
+    process.env[key] = String(value)
+  }
+}
 
 const { createSdkUpload, retrieveRecording, downloadToFile } = require('./lib/recallApi')
 const { normalizeToOndaPayload } = require('./lib/normalizeTranscript')
@@ -22,19 +66,19 @@ const { normalizeToOndaPayload } = require('./lib/normalizeTranscript')
 const REQUIRED_FIREBASE_PROJECT_ID = 'cre8ion-onda'
 
 const CONFIG = {
-  apiKey: process.env.RECALL_API_KEY || '',
-  region: process.env.RECALL_REGION || 'us-west-2',
-  ondaApiBase: (process.env.ONDA_API_BASE || 'http://localhost:3000').replace(/\/$/, ''),
-  webhookSecret: process.env.RECALL_WEBHOOK_SECRET || '',
-  publicWebhookBase: process.env.ONDA_PUBLIC_WEBHOOK_BASE || '',
-  languageCode: process.env.LANGUAGE_CODE || 'en',
+  apiKey: env('RECALL_API_KEY'),
+  region: env('RECALL_REGION', 'us-west-2'),
+  ondaApiBase: env('ONDA_API_BASE', 'http://localhost:3000').replace(/\/$/, ''),
+  webhookSecret: env('RECALL_WEBHOOK_SECRET'),
+  // ONDA_WEBHOOK_URL is the distribution name; ONDA_PUBLIC_WEBHOOK_BASE is the legacy alias.
+  publicWebhookBase: env('ONDA_PUBLIC_WEBHOOK_BASE') || env('ONDA_WEBHOOK_URL'),
+  languageCode: env('LANGUAGE_CODE', 'en'),
   /**
    * Synthetic sdk_upload.complete → /api/webhook/[sessionId].
-   * Default OFF unless explicitly "true" / "1". Non-local must leave unset.
-   * DEFAULT DECISION — flagged for review; remove once Svix path is live.
+   * Default OFF unless explicitly "true" / "1". Packaged builds force false at inject time.
    */
   localForwarderEnabled: ['true', '1', 'yes'].includes(
-    String(process.env.ONDA_LOCAL_FORWARDER_ENABLED || '').trim().toLowerCase(),
+    String(env('ONDA_LOCAL_FORWARDER_ENABLED', 'false')).trim().toLowerCase(),
   ),
 }
 
@@ -343,7 +387,7 @@ async function startRecording() {
     return { ok: false, error: 'Select a session first' }
   }
   if (!CONFIG.apiKey) {
-    sendLog('error', 'RECALL_API_KEY missing in electron-spike/.env')
+    sendLog('error', 'RECALL_API_KEY missing from baked build config')
     return { ok: false, error: 'RECALL_API_KEY missing' }
   }
   if (!sdkReady || !RecallAiSdk) {

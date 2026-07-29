@@ -27,18 +27,33 @@ cp .env.example .env.local
 # fill Firebase (cre8ion-onda only) + GOOGLE_APPLICATION_CREDENTIALS + RECALL_WEBHOOK_SECRET
 npm run dev
 
-# 2) Electron
+# 2) Electron — local dev
 cd electron-spike
 cp .env.example .env
 # fill RECALL_*, ONDA_API_BASE, and NEXT_PUBLIC_FIREBASE_* (client config only)
 npm install
-npm start   # builds React renderer (Vite) then launches Electron
+npm start   # injects config → builds React renderer → launches Electron
 ```
+
+### Windows installer (build-time config)
+
+Packaged installs bake config into the `.exe` — target machines need **no** `.env`.
+
+```bash
+cd electron-spike
+cp .env.build.example .env.build
+# fill production values (ONDA_API_BASE=https://cre8ion-onda.app, secrets, NEXT_PUBLIC_*)
+npm run build:win
+```
+
+`.env.build` is gitignored (`.env*` pattern). The inject step writes
+`lib/buildConfig.generated.json` (also gitignored) which is packaged into the asar.
 
 ### Firebase client env (renderer RTDB caption preview)
 
 Copy the same **public** `NEXT_PUBLIC_FIREBASE_*` values used by the Next app into
-`electron-spike/.env`. These are **not** Admin SDK / service-account credentials:
+`electron-spike/.env` (local) or `.env.build` (installer). These are **not** Admin SDK /
+service-account credentials:
 
 - `NEXT_PUBLIC_FIREBASE_API_KEY`
 - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`

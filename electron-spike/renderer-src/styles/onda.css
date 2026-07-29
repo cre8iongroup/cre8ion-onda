@@ -192,6 +192,24 @@ p {
   background: var(--color-bg-card);
   color: var(--color-text-primary);
 }
+/* Quiet secondary actions in Operator status grid (Sound / Network) */
+.op-settings-btn {
+  align-self: flex-start;
+  margin-top: auto;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  box-shadow: none;
+}
+.op-settings-btn:hover {
+  background: var(--color-bg-card-hover);
+  color: var(--color-text-primary);
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: none;
+  box-shadow: none;
+}
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -599,14 +617,6 @@ p {
 /* In-progress partial — same layout, slightly softer until finalized */
 .op-caption-line--live {
   color: var(--color-text-secondary, #b8b8c2);
-}
-
-.op-caption-speaker {
-  display: inline-block;
-  margin-right: var(--space-2);
-  color: var(--color-secondary);
-  font-size: var(--text-sm);
-  font-weight: 600;
 }
 
 .op-caption-empty {

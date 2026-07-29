@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { buildDeepgramStreamingConfig } from '@/lib/recall/deepgramStreamingPresets'
 
 /**
  * POST /api/recall/sdk-upload
@@ -11,6 +12,9 @@ import { NextRequest, NextResponse } from 'next/server'
  *
  * Requires RECALL_API_KEY (+ optional RECALL_REGION, default us-west-2).
  * Not authenticated beyond env presence — spike only; lock down before prod.
+ *
+ * Deepgram A/B: lib/recall/deepgramStreamingPresets.json (`active`) or
+ * DEEPGRAM_STREAMING_PRESET env.
  */
 export async function POST(request: NextRequest) {
   const apiKey = process.env.RECALL_API_KEY
@@ -56,6 +60,14 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  const dg = buildDeepgramStreamingConfig({
+    language: body.languageCode ?? 'en',
+  })
+  console.info('[recall/sdk-upload] deepgram_streaming preset', {
+    presetId: dg.presetId,
+    label: dg.label,
+  })
+
   const payload = {
     metadata: { sessionId, source: 'onda-electron-spike' },
     recording_config: {
@@ -65,16 +77,8 @@ export async function POST(request: NextRequest) {
       video_mixed_mp4: null,
       transcript: {
         provider: {
-          // Deepgram via Recall — smart_format applies punctuation/casing on finals.
-          // Requires Deepgram API key in Recall transcription dashboard (us-west-2).
-          deepgram_streaming: {
-            model: 'nova-3',
-            language: body.languageCode ?? 'en',
-            smart_format: true,
-            // Deepgram defaults interim_results to false — without this, only
-            // finalized batches arrive (no smooth transcript.partial_data).
-            interim_results: true,
-          },
+          // Deepgram via Recall — requires Deepgram key in Recall dashboard (us-west-2).
+          deepgram_streaming: dg.deepgram_streaming,
         },
       },
       realtime_endpoints: realtimeEndpoints,
@@ -108,6 +112,7 @@ export async function POST(request: NextRequest) {
         recording_id: json.recording_id,
         sessionId,
         region,
+        deepgramPreset: dg.presetId,
       },
       { status: 201 },
     )

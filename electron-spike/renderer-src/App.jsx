@@ -140,7 +140,7 @@ function CaptionPreview({ sessionId, feedState }) {
             c.finalized ? 'op-caption-line' : 'op-caption-line op-caption-line--live'
           }
         >
-          {c.speakerLabel ? <span className="op-caption-speaker">{c.speakerLabel}</span> : null}
+          {/* speakerLabel kept on chunks for storage; hide in Operator until diarization is validated */}
           <span>{c.text}</span>
         </div>
       ))}
@@ -781,10 +781,10 @@ export default function App() {
                 <div className="text-sm text-muted">{meterLevel}</div>
                 <button
                   type="button"
-                  className="btn btn-ghost btn-sm"
+                  className="btn btn-sm op-settings-btn"
                   onClick={() => getOndaSpike().openOsSettings('sound')}
                 >
-                  Sound settings
+                  Open Sound Settings
                 </button>
               </div>
 
@@ -801,10 +801,10 @@ export default function App() {
                 </div>
                 <button
                   type="button"
-                  className="btn btn-ghost btn-sm"
+                  className="btn btn-sm op-settings-btn"
                   onClick={() => getOndaSpike().openOsSettings('network')}
                 >
-                  Network settings
+                  Open Network Settings
                 </button>
               </div>
             </div>

@@ -3,6 +3,8 @@
  * API key lives in electron-spike/.env — do not ship this pattern to production.
  */
 
+const { buildDeepgramStreamingConfig } = require('./deepgramStreamingPresets')
+
 function recallBaseUrl(region) {
   return `https://${region}.recall.ai`
 }
@@ -31,6 +33,13 @@ async function createSdkUpload({
     })
   }
 
+  // A/B: flip `active` in lib/recall/deepgramStreamingPresets.json (or DEEPGRAM_STREAMING_PRESET).
+  const dg = buildDeepgramStreamingConfig({ language: languageCode || 'en' })
+  console.info('[recallApi] deepgram_streaming preset', {
+    presetId: dg.presetId,
+    label: dg.label,
+  })
+
   const body = {
     metadata: { sessionId, source: 'onda-electron-spike' },
     recording_config: {
@@ -38,16 +47,8 @@ async function createSdkUpload({
       video_mixed_mp4: null,
       transcript: {
         provider: {
-          // Deepgram via Recall — smart_format applies punctuation/casing on finals.
-          // Requires Deepgram API key in Recall transcription dashboard (us-west-2).
-          deepgram_streaming: {
-            model: 'nova-3',
-            language: languageCode || 'en',
-            smart_format: true,
-            // Deepgram defaults interim_results to false — without this, only
-            // finalized batches arrive (no smooth transcript.partial_data).
-            interim_results: true,
-          },
+          // Deepgram via Recall — requires Deepgram key in Recall dashboard (us-west-2).
+          deepgram_streaming: dg.deepgram_streaming,
         },
       },
       realtime_endpoints: realtimeEndpoints,

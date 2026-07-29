@@ -1,0 +1,30 @@
+{
+  "active": "baseline",
+  "presets": {
+    "baseline": {
+      "label": "A — baseline (smart_format + interim)",
+      "notes": "Current prod: full smart formatting (punct/case + ITN) on finals; interim partials on.",
+      "options": {
+        "smart_format": true,
+        "interim_results": true
+      }
+    },
+    "punctuate": {
+      "label": "B — punctuate only (no smart_format)",
+      "notes": "Punctuation + capitalization without ITN/number expansion overhead. interim on.",
+      "options": {
+        "punctuate": true,
+        "interim_results": true
+      }
+    },
+    "punctuate_endpointing": {
+      "label": "C — punctuate + endpointing 300ms",
+      "notes": "Same formatting as B, but longer silence before speech_final. Tests whether frequent default (10ms) finals make formatted commits feel chunkier/slower independent of ITN.",
+      "options": {
+        "punctuate": true,
+        "interim_results": true,
+        "endpointing": 300
+      }
+    }
+  }
+}

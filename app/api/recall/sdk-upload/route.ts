@@ -65,9 +65,12 @@ export async function POST(request: NextRequest) {
       video_mixed_mp4: null,
       transcript: {
         provider: {
-          recallai_streaming: {
-            mode: 'prioritize_low_latency',
-            language_code: body.languageCode ?? 'en',
+          // Deepgram via Recall — smart_format applies punctuation/casing on finals.
+          // Requires Deepgram API key in Recall transcription dashboard (us-west-2).
+          deepgram_streaming: {
+            model: 'nova-3',
+            language: body.languageCode ?? 'en',
+            smart_format: true,
           },
         },
       },

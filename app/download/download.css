@@ -86,3 +86,19 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+.dl-card a.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  text-align: center;
+}
+
+.dl-note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  flex: 0;
+}

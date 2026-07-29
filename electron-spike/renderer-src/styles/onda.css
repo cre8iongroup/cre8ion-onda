@@ -192,23 +192,23 @@ p {
   background: var(--color-bg-card);
   color: var(--color-text-primary);
 }
-.op-settings-link {
+/* Quiet secondary actions in Operator status grid (Sound / Network) */
+.op-settings-btn {
   align-self: flex-start;
   margin-top: auto;
-  gap: 0.35em;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 0.18em;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  box-shadow: none;
 }
-.op-settings-link:hover {
-  text-decoration-color: currentColor;
-}
-.op-external-icon {
-  display: inline-block;
-  font-size: 0.85em;
-  line-height: 1;
-  opacity: 0.75;
-  transform: translateY(-0.05em);
+.op-settings-btn:hover {
+  background: var(--color-bg-card-hover);
+  color: var(--color-text-primary);
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: none;
+  box-shadow: none;
 }
 .btn:disabled {
   opacity: 0.45;

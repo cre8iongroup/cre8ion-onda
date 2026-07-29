@@ -781,13 +781,10 @@ export default function App() {
                 <div className="text-sm text-muted">{meterLevel}</div>
                 <button
                   type="button"
-                  className="btn btn-ghost btn-sm op-settings-link"
+                  className="btn btn-sm op-settings-btn"
                   onClick={() => getOndaSpike().openOsSettings('sound')}
                 >
-                  Sound settings
-                  <span className="op-external-icon" aria-hidden="true">
-                    ↗
-                  </span>
+                  Open Sound Settings
                 </button>
               </div>
 
@@ -804,13 +801,10 @@ export default function App() {
                 </div>
                 <button
                   type="button"
-                  className="btn btn-ghost btn-sm op-settings-link"
+                  className="btn btn-sm op-settings-btn"
                   onClick={() => getOndaSpike().openOsSettings('network')}
                 >
-                  Network settings
-                  <span className="op-external-icon" aria-hidden="true">
-                    ↗
-                  </span>
+                  Open Network Settings
                 </button>
               </div>
             </div>

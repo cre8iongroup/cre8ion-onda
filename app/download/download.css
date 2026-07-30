@@ -37,6 +37,15 @@
   padding: var(--space-10) var(--space-6);
 }
 
+.dl-app-icon {
+  display: block;
+  width: 80px;
+  height: 80px;
+  margin: 0 0 var(--space-5);
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+}
+
 .dl-title {
   font-size: var(--text-2xl);
   margin: 0 0 var(--space-3);

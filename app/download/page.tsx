@@ -24,6 +24,14 @@ export default function DownloadPage() {
       </header>
 
       <main className="dl-main">
+        {/* Same dark rounded-tile wave mark as electron-spike/build/icon-source.png */}
+        <img
+          className="dl-app-icon"
+          src="/onda-operator-icon.png"
+          alt=""
+          width={80}
+          height={80}
+        />
         <h1 className="dl-title">Download Onda Operator</h1>
         <p className="dl-lede">
           Desktop installer for live session operation. Available for Windows and Mac.

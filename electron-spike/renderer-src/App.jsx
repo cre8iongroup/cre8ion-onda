@@ -349,6 +349,57 @@ export default function App() {
     }
   }, [appendLog])
 
+  // Live feedState from RTDB — reliable source of truth for Svix-driven transitions
+  // (e.g. stopping → ended) when the Electron local forwarder is off. Complements
+  // IPC onStatus updates from main; does not replace them.
+  useEffect(() => {
+    if (screen !== 'record' || !selectedSessionId) return undefined
+
+    const sessionId = selectedSessionId
+    let unsub = () => {}
+    try {
+      const db = getRendererDatabase()
+      const feedRef = ref(db, `liveSessions/${sessionId}/feedState`)
+      unsub = onValue(
+        feedRef,
+        (snap) => {
+          const next = snap.val()
+          // Ignore null/missing (node deleted after ended cleanup) — keep last known UI state.
+          if (typeof next !== 'string' || !next) return
+          setFeedState((prev) => {
+            if (prev === next) return prev
+            appendLog({
+              level: 'info',
+              message: `RTDB feedState → ${next}`,
+              extra: { sessionId, previous: prev },
+            })
+            return next
+          })
+          setSessions((prev) =>
+            prev.map((s) => (s.id === sessionId ? { ...s, feedState: next } : s)),
+          )
+        },
+        (err) => {
+          appendLog({
+            level: 'warn',
+            message: `RTDB feedState listen failed: ${err?.message || String(err)}`,
+            extra: { sessionId },
+          })
+        },
+      )
+    } catch (err) {
+      appendLog({
+        level: 'warn',
+        message: `RTDB feedState subscribe failed: ${err?.message || String(err)}`,
+        extra: { sessionId },
+      })
+    }
+
+    return () => {
+      unsub()
+    }
+  }, [screen, selectedSessionId, appendLog])
+
   const currentSession = useMemo(
     () => sessions.find((s) => s.id === selectedSessionId) || null,
     [sessions, selectedSessionId],

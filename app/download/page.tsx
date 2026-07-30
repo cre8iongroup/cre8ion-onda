@@ -5,11 +5,12 @@ import './download.css'
 
 export const metadata: Metadata = {
   title: 'Download Onda Operator',
-  description: 'Download Onda Operator for Windows. Mac installer coming soon.',
+  description: 'Download Onda Operator for Windows or Mac.',
 }
 
 export default function DownloadPage() {
   const windows = INSTALLERS.windows
+  const mac = INSTALLERS.mac
 
   return (
     <div className="dl-shell">
@@ -25,8 +26,7 @@ export default function DownloadPage() {
       <main className="dl-main">
         <h1 className="dl-title">Download Onda Operator</h1>
         <p className="dl-lede">
-          Desktop installer for live session operation. Windows is available now; Mac is coming
-          soon.
+          Desktop installer for live session operation. Available for Windows and Mac.
         </p>
 
         <div className="dl-cards">
@@ -42,12 +42,16 @@ export default function DownloadPage() {
             </p>
           </div>
 
-          <div className="dl-card" aria-disabled="true">
+          <div className="dl-card">
             <h2>Mac</h2>
             <p>Onda Operator for macOS.</p>
-            <button type="button" className="btn btn-primary" disabled>
-              Download for Mac — coming soon
-            </button>
+            <a className="btn btn-primary" href="/download-success?platform=mac">
+              Download for Mac
+            </a>
+            <p className="dl-note">
+              For Mac only. Unsigned / not notarized — allow the app on first launch if macOS
+              blocks it. ({mac.filename})
+            </p>
           </div>
         </div>
       </main>

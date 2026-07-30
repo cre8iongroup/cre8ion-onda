@@ -12,6 +12,7 @@
     "preview:renderer": "vite preview --host 127.0.0.1 --port 4173",
     "start": "npm run inject-config && npm run build:renderer && electron .",
     "build:win": "npm run inject-config:packaged && npm run build:renderer && electron-builder --win",
+    "build:mac": "npm run inject-config:packaged && npm run build:renderer && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
     "verify-normalize": "node scripts/verify-normalize.js",
     "verify-caption-lines": "node scripts/verify-caption-lines.js"
   },
@@ -52,6 +53,17 @@
       ],
       "icon": "build/icon.ico",
       "forceCodeSigning": false
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.business",
+      "identity": null,
+      "forceCodeSigning": false,
+      "gatekeeperAssess": false,
+      "hardenedRuntime": false
     }
   },
   "dependencies": {

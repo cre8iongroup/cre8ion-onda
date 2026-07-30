@@ -44,10 +44,10 @@ function MacInstructions() {
     <ol className="dl-steps">
       <li>
         <strong>Find the download.</strong> Your browser should save{' '}
-        <code>OndaOperator.dmg</code> to your Downloads folder.
+        <code>OndaOperatorSetup.dmg</code> to your Downloads folder.
       </li>
       <li>
-        <strong>Open the disk image.</strong> Double-click <code>OndaOperator.dmg</code>, then drag{' '}
+        <strong>Open the disk image.</strong> Double-click <code>OndaOperatorSetup.dmg</code>, then drag{' '}
         <strong>Onda Operator</strong> into <strong>Applications</strong>.
       </li>
       <li>

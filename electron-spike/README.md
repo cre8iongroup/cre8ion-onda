@@ -46,6 +46,15 @@ cp .env.build.example .env.build
 npm run build:win
 ```
 
+### Mac installer (same build-time config)
+
+```bash
+cd electron-spike
+# reuse the same .env.build as Windows
+npm run build:mac
+# output: dist/*.dmg (unsigned; Gatekeeper will prompt on first launch)
+```
+
 `.env.build` is gitignored (`.env*` pattern). The inject step writes
 `lib/buildConfig.generated.json` (also gitignored) which is packaged into the asar.
 

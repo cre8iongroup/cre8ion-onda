@@ -95,6 +95,9 @@ function platformLede(platform: DownloadPlatform | null, installer: InstallerCon
   if (platform === 'windows' && installer?.available) {
     return 'Your Windows installer should begin downloading now. Follow the steps below to install — including the SmartScreen prompt, which is expected for this unsigned internal build.'
   }
+  if (platform === 'mac' && installer?.available) {
+    return 'Your Mac installer should begin downloading now. Follow the steps below to install — macOS may block the first launch because this internal build is not notarized.'
+  }
   if (platform === 'mac') {
     return 'Follow the Mac install steps below. When the Mac download is enabled, this page will also start the .dmg automatically.'
   }

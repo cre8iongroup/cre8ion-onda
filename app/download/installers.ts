@@ -28,9 +28,9 @@ export const INSTALLERS: Record<DownloadPlatform, InstallerConfig> = {
   mac: {
     platform: 'mac',
     label: 'Mac',
-    filename: 'OndaOperator.dmg',
-    available: false,
-    url: storageMediaUrl('installers/OndaOperator.dmg'),
+    filename: 'OndaOperatorSetup.dmg',
+    available: true,
+    url: storageMediaUrl('installers/OndaOperatorSetup.dmg'),
   },
 }
 

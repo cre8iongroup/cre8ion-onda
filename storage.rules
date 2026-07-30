@@ -41,5 +41,11 @@ service firebase.storage {
       allow read: if true;
       allow write: if false;
     }
+
+    // Onda Operator Mac installer — public download only (same pattern as Windows).
+    match /installers/OndaOperatorSetup.dmg {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }

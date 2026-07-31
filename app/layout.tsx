@@ -28,6 +28,8 @@ export const viewport: Viewport = {
   minimumScale: 1,
   // Required for branded attendee bg to paint under iOS status bar / home indicator.
   // Shells apply env(safe-area-inset-*) padding so content stays clear of the notch.
+  // themeColor is the Onda default; attendee routes override <meta name="theme-color">
+  // client-side from effective branding background (see AttendeeThemeColor).
   viewportFit: 'cover',
   themeColor: '#5b3aee',
 }

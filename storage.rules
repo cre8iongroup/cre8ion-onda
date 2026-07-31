@@ -3,17 +3,18 @@ service firebase.storage {
   match /b/{bucket}/o {
 
     // Show logos — readable by anyone (used in attendee + portal views)
-    // Writable only by authenticated admin/editor.
-    // Storage rules match whole path segments only; require filename logo.<anything>.
     match /shows/{showId}/{fileName} {
       allow read: if fileName.matches('logo\\..+');
       allow write: if request.auth != null
         && fileName.matches('logo\\..+')
-        && request.resource.size < 5 * 1024 * 1024  // 5MB max
+        && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
-    // Room logos (override) + QR — public read for attendee/print
+    // Room logos + QR — public read.
+    // QR object writes: primary path is Admin SDK (POST /api/admin/qr enforces
+    // canEditShows for generate/regenerate). Client auth writes allowed only as
+    // a fallback for signed-in staff; Contributors never hit generate.
     match /shows/{showId}/rooms/{roomId}/{fileName} {
       allow read: if fileName.matches('qr\\.(png|svg)') || fileName.matches('logo\\..+');
       allow write: if request.auth != null
@@ -25,9 +26,8 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
-    // Session QR codes — same policy as room QR
+    // Session QR — same policy as room QR
     match /shows/{showId}/sessions/{sessionId}/{fileName} {
-      // Audio remains auth-only (more specific path below wins when overlapping — see audio match)
       allow read: if fileName.matches('qr\\.(png|svg)');
       allow write: if request.auth != null
         && fileName.matches('qr\\.(png|svg)')
@@ -38,36 +38,26 @@ service firebase.storage {
         );
     }
 
-    // PDF exports — readable by authenticated users assigned to the show
-    // Writable by server (Cloud Functions Admin SDK)
     match /exports/{showId}/{fileName} {
       allow read: if request.auth != null;
-      allow write: if false; // Cloud Functions only
+      allow write: if false;
     }
 
-    // Session audio from Recall (server-side retrieve on sdk_upload.complete).
-    // Path: shows/{showId}/sessions/{sessionId}/audio/{recordingId}.mp3
-    // Writable only by Admin SDK (webhook / Cloud Functions). Client writes denied.
     match /shows/{showId}/sessions/{sessionId}/audio/{fileName} {
       allow read: if request.auth != null;
       allow write: if false;
     }
 
-    // PWA icons — public read, admin write only
     match /icons/{fileName} {
       allow read: if true;
       allow write: if request.auth != null;
     }
 
-    // Onda Operator Windows installer — public download only.
-    // Path is fixed/stable so /download can link without version churn.
-    // Writes: Firebase Console / Admin SDK only (no client uploads).
     match /installers/OndaOperatorSetup.exe {
       allow read: if true;
       allow write: if false;
     }
 
-    // Onda Operator Mac installer — public download only (same pattern as Windows).
     match /installers/OndaOperatorSetup.dmg {
       allow read: if true;
       allow write: if false;

@@ -28,8 +28,8 @@ export default function RoomsPanel({
   canEdit: boolean
   onFlash: (message: string) => void
 }) {
-  const { user, capabilities } = useAuthContext()
-  const canOpenRoom = Boolean(capabilities?.canDownloadQr || canEdit)
+  const { user } = useAuthContext()
+  const canOpenRoom = canEdit
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -189,7 +189,7 @@ export default function RoomsPanel({
                         href={`/admin/shows/${showId}/rooms/${room.id}`}
                         className="btn btn-secondary btn-sm"
                       >
-                        {canEdit ? 'Edit' : 'QR'}
+                        Edit
                       </Link>
                     ) : null}
                     {canEdit ? (

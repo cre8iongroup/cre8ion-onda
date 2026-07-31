@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { doc, updateDoc } from 'firebase/firestore'
-import { getClientFirestore } from '@/lib/firebase/client'
+import { useAuthContext } from '@/context/AuthContext'
 import { provisionTechAuthUser } from '@/lib/tech/provisionTechUser'
 
 export default function TechCredentialPanel({
@@ -18,6 +17,7 @@ export default function TechCredentialPanel({
   createdBy: string
   canEdit: boolean
 }) {
+  const { user } = useAuthContext()
   const [credential, setCredential] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -33,14 +33,27 @@ export default function TechCredentialPanel({
       setError('Portal slug is required before provisioning tech login.')
       return
     }
+    if (!user) {
+      setError('Sign in required.')
+      return
+    }
 
     setBusy(true)
     setError(null)
     setMessage(null)
     try {
-      await updateDoc(doc(getClientFirestore(), 'shows', showId), {
-        techCredential: credential.trim(),
+      const token = await user.getIdToken()
+      const res = await fetch('/api/admin/shows/tech-settings', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ showId, techCredential: credential.trim() }),
       })
+      const json = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) throw new Error(json.error || `Save failed (${res.status})`)
+
       const result = await provisionTechAuthUser({
         showId,
         portalSlug,
@@ -49,10 +62,12 @@ export default function TechCredentialPanel({
       })
       if (result.existed) {
         setMessage(
-          'Show credential saved. A tech Auth user already existed for this slug — password was not rotated automatically. Use a new portal slug or reset via Firebase Auth if needed.'
+          'Show credential saved. A tech Auth user already existed for this slug — password was not rotated automatically. Use a new portal slug or reset via Firebase Auth if needed.',
         )
       } else {
-        setMessage('Tech login provisioned. Operators can sign in at /tech/login with this slug + credential.')
+        setMessage(
+          'Tech login provisioned. Operators can sign in at /tech/login with this slug + credential.',
+        )
       }
       setCredential('')
     } catch (err: any) {
@@ -73,6 +88,9 @@ export default function TechCredentialPanel({
       </p>
       <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
         Login URL: <code>/tech/login</code> · Show code: <code>{portalSlug || '—'}</code>
+      </p>
+      <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
+        Requires the <code>canManageTech</code> capability (independent of show edit).
       </p>
 
       {canEdit && (

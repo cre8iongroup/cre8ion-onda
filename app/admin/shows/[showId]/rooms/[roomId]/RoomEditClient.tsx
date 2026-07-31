@@ -8,7 +8,7 @@ import { getClientFirestore, getClientStorage } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
 import { renameRoomDualWrite } from '@/lib/rooms'
 import type { RoomDoc, ShowDoc, ShowRoom, WithId } from '@/types'
-import QrDownloadPanel from '@/app/admin/components/QrDownloadPanel'
+import QrCodeCard from '@/app/admin/components/QrCodeCard'
 
 export default function RoomEditClient({
   showId,
@@ -20,6 +20,7 @@ export default function RoomEditClient({
   const { capabilities } = useAuthContext()
   const canEdit = Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)
   const canDownload = Boolean(capabilities?.canDownloadQr)
+  const canGenerate = canEdit
   const readOnlyQr = canDownload && !canEdit
 
   const [show, setShow] = useState<WithId<ShowDoc> | null>(null)
@@ -194,11 +195,13 @@ export default function RoomEditClient({
         </section>
       ) : null}
 
-      <QrDownloadPanel
+      <QrCodeCard
         type="room"
         showId={showId}
         id={roomId}
+        label={room.name}
         deepLinkPath={`/room/${roomId}`}
+        canGenerate={canGenerate}
         canDownload={canDownload}
         existingUrl={room.qrCodeUrl}
       />

@@ -52,7 +52,7 @@ export default function TechLayout({ children }: { children: React.ReactNode }) 
     <div className="panel-shell">
       <aside className="panel-sidebar" aria-label="Tech navigation">
         <div className="sidebar-logo">
-          <div className="sidebar-logo-mark">〜 Onda</div>
+          <div className="sidebar-logo-mark">〜 cre8ion Onda</div>
           <div className="sidebar-logo-sub">Tech Panel</div>
         </div>
 

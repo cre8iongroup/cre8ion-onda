@@ -36,7 +36,7 @@ export default function ReviewLayout({ children }: { children: React.ReactNode }
     <div className="panel-shell">
       <aside className="panel-sidebar" aria-label="Review navigation">
         <div className="sidebar-logo">
-          <div className="sidebar-logo-mark">〜 Onda</div>
+          <div className="sidebar-logo-mark">〜 cre8ion Onda</div>
           <div className="sidebar-logo-sub">Reviewer Panel</div>
         </div>
 

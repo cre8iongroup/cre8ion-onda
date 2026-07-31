@@ -13,7 +13,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
     <div className="docs-shell">
       <header className="docs-topbar">
         <Link href="/docs/getting-started" className="docs-brand">
-          Onda Docs
+          cre8ion Onda Docs
         </Link>
         <nav className="docs-top-links" aria-label="Site">
           <Link href="/download">Download</Link>

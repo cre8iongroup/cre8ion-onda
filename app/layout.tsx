@@ -26,6 +26,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   minimumScale: 1,
+  // Required for branded attendee bg to paint under iOS status bar / home indicator.
+  // Shells apply env(safe-area-inset-*) padding so content stays clear of the notch.
   viewportFit: 'cover',
   themeColor: '#5b3aee',
 }

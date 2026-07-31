@@ -7,6 +7,7 @@ import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
 import type { SessionDoc, ShowDoc, WithId } from '@/types'
 import QrCodeCard from '@/app/admin/components/QrCodeCard'
+import { sessionPublicUrl } from '@/lib/attendee/urls'
 
 function toLocalInput(ts?: Timestamp): string {
   if (!ts) return ''
@@ -106,8 +107,18 @@ export default function SessionEditClient({
       <h1 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>
         {readOnlyQr ? 'Session QR' : 'Edit session'}
       </h1>
-      <p style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-8)' }}>
+      <p style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>
         {session.friendlyName || session.title}
+      </p>
+      <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-8)' }}>
+        <a
+          href={sessionPublicUrl(sessionId)}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'inherit' }}
+        >
+          /session/{sessionId}
+        </a>
       </p>
 
       {flash && (

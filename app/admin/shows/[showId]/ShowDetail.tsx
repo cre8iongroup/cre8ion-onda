@@ -24,6 +24,7 @@ import ShowLinksPanel from './ShowLinksPanel'
 import PublishPanel from './PublishPanel'
 import TimezonePanel from './TimezonePanel'
 import QrCodesTab from './QrCodesTab'
+import { showPublicUrl } from '@/lib/attendee/urls'
 import {
   canHideSession,
   sessionStatusBadgeClass,
@@ -296,7 +297,18 @@ export default function ShowDetail({ showId }: { showId: string }) {
           <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
             {formatDateRange(show.startDate, show.endDate)}
             {' · '}
-            /show/{show.branding?.portalURL || '—'}
+            {show.branding?.portalURL ? (
+              <a
+                href={showPublicUrl(show.branding.portalURL)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'inherit' }}
+              >
+                /show/{show.branding.portalURL}
+              </a>
+            ) : (
+              '/show/—'
+            )}
           </p>
         </div>
         {canEditShows && activeTab === 'rooms' ? (

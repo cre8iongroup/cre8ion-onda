@@ -124,6 +124,7 @@ export default function BrandingPanel({
   )
   const [textColor, setTextColor] = useState(branding.textColor || DEFAULT_TEXT_COLOR)
   const [logoURL, setLogoURL] = useState(branding.logoURL || '')
+  const [logoFileName, setLogoFileName] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -188,9 +189,23 @@ export default function BrandingPanel({
           type="file"
           accept="image/*"
           disabled={!canEdit || busy}
+          tabIndex={-1}
+          aria-hidden
+          style={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: 'hidden',
+            clip: 'rect(0, 0, 0, 0)',
+            whiteSpace: 'nowrap',
+            border: 0,
+          }}
           onChange={async (e) => {
             const file = e.target.files?.[0]
             if (!file) return
+            setLogoFileName(file.name)
             setBusy(true)
             setError(null)
             try {
@@ -205,6 +220,19 @@ export default function BrandingPanel({
             }
           }}
         />
+        <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={!canEdit || busy}
+            onClick={() => fileRef.current?.click()}
+          >
+            Choose file
+          </button>
+          <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            {logoFileName || 'No file chosen'}
+          </span>
+        </div>
       </div>
 
       <div

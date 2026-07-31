@@ -1,17 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import {
-  collection,
-  onSnapshot,
-} from 'firebase/firestore'
+import { collection, onSnapshot } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
 import type { RoomDoc, SessionDoc, ShowRoom, WithId } from '@/types'
 import { resolveRoomName, sortRoomsByName } from '@/lib/rooms'
 import QrCodeCard from '@/app/admin/components/QrCodeCard'
 
 /**
- * QR codes hub — rooms with nested sessions. Shared generate/download via QrCodeCard.
+ * QR codes hub — collapsible rooms, dense session rows, thumbnail → modal.
  */
 export default function QrCodesTab({
   showId,
@@ -38,8 +35,9 @@ export default function QrCodesTab({
 
   const sortedRooms = sortRoomsByName(rooms)
   const qrByRoomId = new Map(roomDocs.map((r) => [r.id, r.qrCodeUrl]))
+  const orphanSessions = sessions.filter((s) => !rooms.find((r) => r.id === s.roomId))
 
-  if (sortedRooms.length === 0) {
+  if (sortedRooms.length === 0 && orphanSessions.length === 0) {
     return (
       <div className="card" style={{ padding: 'var(--space-8)', textAlign: 'center' }}>
         <p style={{ color: 'var(--color-text-secondary)' }}>
@@ -50,27 +48,50 @@ export default function QrCodesTab({
   }
 
   return (
-    <div style={{ display: 'grid', gap: 'var(--space-8)' }}>
+    <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
         Codes encode production URLs via <code>NEXT_PUBLIC_APP_URL</code>. Generate once; Regenerate
-        overwrites. Contributors can download existing codes only.
+        overwrites. Contributors can download existing codes only. Open a room section, then View a
+        thumbnail for full-size download / regenerate.
       </p>
 
       {sortedRooms.map((room) => {
         const roomSessions = sessions.filter((s) => s.roomId === room.id)
         return (
-          <section key={room.id}>
-            <h3 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
-              {room.name}
-            </h3>
-            <div
+          <details
+            key={room.id}
+            className="card"
+            style={{ padding: 0, overflow: 'hidden' }}
+          >
+            <summary
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                gap: 'var(--space-4)',
-                marginBottom: 'var(--space-4)',
+                cursor: 'pointer',
+                padding: 'var(--space-4)',
+                fontWeight: 600,
+                fontSize: 'var(--text-lg)',
+                userSelect: 'none',
               }}
             >
+              {room.name}
+              <span
+                className="text-sm"
+                style={{ fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: '0.75rem' }}
+              >
+                ({roomSessions.length} session{roomSessions.length === 1 ? '' : 's'})
+              </span>
+            </summary>
+
+            <div style={{ padding: '0 var(--space-4) var(--space-4)' }}>
+              <p
+                className="text-sm"
+                style={{
+                  color: 'var(--color-text-muted)',
+                  marginBottom: 'var(--space-2)',
+                  fontWeight: 600,
+                }}
+              >
+                Room QR
+              </p>
               <QrCodeCard
                 type="room"
                 showId={showId}
@@ -80,74 +101,81 @@ export default function QrCodesTab({
                 canGenerate={canGenerate}
                 canDownload={canDownload}
                 existingUrl={qrByRoomId.get(room.id)}
+                variant="row"
               />
-            </div>
 
-            {roomSessions.length > 0 ? (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-                  gap: 'var(--space-3)',
-                  paddingLeft: 'var(--space-2)',
-                  borderLeft: '2px solid var(--color-border)',
-                }}
-              >
-                {roomSessions.map((session) => (
-                  <QrCodeCard
-                    key={session.id}
-                    type="session"
-                    showId={showId}
-                    id={session.id}
-                    label={session.friendlyName || session.title}
-                    deepLinkPath={`/session/${session.id}`}
-                    canGenerate={canGenerate}
-                    canDownload={canDownload}
-                    existingUrl={session.qrCodeUrl}
-                    compact
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                No sessions in this room yet.
-              </p>
-            )}
-          </section>
+              {roomSessions.length > 0 ? (
+                <>
+                  <p
+                    className="text-sm"
+                    style={{
+                      color: 'var(--color-text-muted)',
+                      margin: 'var(--space-4) 0 var(--space-2)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Sessions
+                  </p>
+                  <div>
+                    {roomSessions.map((session) => (
+                      <QrCodeCard
+                        key={session.id}
+                        type="session"
+                        showId={showId}
+                        id={session.id}
+                        label={session.friendlyName || session.title}
+                        deepLinkPath={`/session/${session.id}`}
+                        canGenerate={canGenerate}
+                        canDownload={canDownload}
+                        existingUrl={session.qrCodeUrl}
+                        variant="row"
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p
+                  className="text-sm"
+                  style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-3)' }}
+                >
+                  No sessions in this room yet.
+                </p>
+              )}
+            </div>
+          </details>
         )
       })}
 
-      {/* Orphan sessions (roomId missing from catalog) */}
-      {sessions.some((s) => !rooms.find((r) => r.id === s.roomId)) ? (
-        <section>
-          <h3 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
-            Other sessions
-          </h3>
-          <div
+      {orphanSessions.length > 0 ? (
+        <details className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <summary
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-              gap: 'var(--space-3)',
+              cursor: 'pointer',
+              padding: 'var(--space-4)',
+              fontWeight: 600,
+              fontSize: 'var(--text-lg)',
+              userSelect: 'none',
             }}
           >
-            {sessions
-              .filter((s) => !rooms.find((r) => r.id === s.roomId))
-              .map((session) => (
-                <QrCodeCard
-                  key={session.id}
-                  type="session"
-                  showId={showId}
-                  id={session.id}
-                  label={`${session.friendlyName || session.title} · ${resolveRoomName(rooms, session.roomId)}`}
-                  deepLinkPath={`/session/${session.id}`}
-                  canGenerate={canGenerate}
-                  canDownload={canDownload}
-                  existingUrl={session.qrCodeUrl}
-                  compact
-                />
-              ))}
+            Other sessions
+          </summary>
+          <div style={{ padding: '0 var(--space-4) var(--space-4)' }}>
+            {orphanSessions.map((session) => (
+              <QrCodeCard
+                key={session.id}
+                type="session"
+                showId={showId}
+                id={session.id}
+                label={`${session.friendlyName || session.title} · ${resolveRoomName(rooms, session.roomId)}`}
+                deepLinkPath={`/session/${session.id}`}
+                canGenerate={canGenerate}
+                canDownload={canDownload}
+                existingUrl={session.qrCodeUrl}
+                variant="row"
+              />
+            ))}
           </div>
-        </section>
+        </details>
       ) : null}
     </div>
   )

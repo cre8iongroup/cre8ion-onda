@@ -14,7 +14,7 @@ import { getClientDatabase } from '@/lib/firebase/client'
 import { formatSessionDateTime } from '@/lib/attendee/schedule'
 import { buildCaptionDisplayLines } from '@/lib/attendee/captionLines'
 import type { EffectiveBranding, FeedState, RTDBChunk, WithId } from '@/types'
-import { AttendeeFooter, brandingStyle } from '../../AttendeeChrome'
+import { AttendeeFooter, AttendeeSafariTint, brandingStyle } from '../../AttendeeChrome'
 import { AttendeeThemeColor } from '../../AttendeeThemeColor'
 
 type ChunkRow = WithId<RTDBChunk>
@@ -149,6 +149,7 @@ export default function LiveCaptionFeed({
   return (
     <div className="session-shell" style={brandingStyle(branding)} data-text-size={textSize}>
       <AttendeeThemeColor backgroundColor={branding.backgroundColor} />
+      <AttendeeSafariTint backgroundColor={branding.backgroundColor} />
       <div className="session-inner">
         {room ? (
           <p className="session-back">

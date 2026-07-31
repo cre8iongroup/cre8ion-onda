@@ -1,5 +1,31 @@
 /* Attendee-facing surfaces — themed via CSS variables from EffectiveBranding */
 
+/*
+ * iOS 26+ Safari (Liquid Glass) ignores theme-color and samples
+ * position:fixed/sticky backgrounds at the viewport top/bottom for
+ * toolbar/status-bar tint. These strips carry the branding background
+ * in real CSS at first paint. Heights follow safe-area so they occupy
+ * the same inset regions as shell padding (content stays clear).
+ */
+.attendee-safari-tint {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-color: var(--attendee-bg, #0a0a0f);
+}
+
+.attendee-safari-tint--top {
+  top: 0;
+  height: max(env(safe-area-inset-top, 0px), 1px);
+}
+
+.attendee-safari-tint--bottom {
+  bottom: 0;
+  height: max(env(safe-area-inset-bottom, 0px), 1px);
+}
+
 .attendee-shell {
   min-height: 100dvh;
   min-height: 100svh;

@@ -155,28 +155,34 @@ export default function LiveCaptionFeed({
             <p className="session-show-name">{showName}</p>
             <h1 className="session-title">{title}</h1>
           </div>
-          <div
-            className="caption-size-control"
-            role="group"
-            aria-label="Caption text size"
-          >
-            {TEXT_SIZES.map((size) => (
-              <button
-                key={size}
-                type="button"
-                className={`caption-size-btn${textSize === size ? ' is-active' : ''}`}
-                aria-pressed={textSize === size}
-                aria-label={
-                  size === 'sm' ? 'Small captions' : size === 'md' ? 'Medium captions' : 'Large captions'
-                }
-                onClick={() => selectTextSize(size)}
-              >
-                <span className={`caption-size-glyph caption-size-glyph--${size}`} aria-hidden>
-                  A
-                </span>
-              </button>
-            ))}
-          </div>
+          {isLive ? (
+            <div
+              className="caption-size-control"
+              role="group"
+              aria-label="Caption text size"
+            >
+              {TEXT_SIZES.map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  className={`caption-size-btn${textSize === size ? ' is-active' : ''}`}
+                  aria-pressed={textSize === size}
+                  aria-label={
+                    size === 'sm'
+                      ? 'Small captions'
+                      : size === 'md'
+                        ? 'Medium captions'
+                        : 'Large captions'
+                  }
+                  onClick={() => selectTextSize(size)}
+                >
+                  <span className={`caption-size-glyph caption-size-glyph--${size}`} aria-hidden>
+                    A
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </header>
 
         {/* Single feed container — waiting / live / ended share this box */}

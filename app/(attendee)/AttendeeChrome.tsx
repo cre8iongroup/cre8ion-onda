@@ -1,4 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
+import Markdown from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
 import type { EffectiveBranding } from '@/types'
 import './attendee.css'
 
@@ -26,6 +28,31 @@ export function AttendeeShell({
   )
 }
 
+/**
+ * Restricted markdown for show legal notices: paragraphs, bold, italic, links,
+ * line breaks only (matches LegalNoticePanel / ShowBranding.legalNotice docs).
+ */
+export function LegalNoticeMarkdown({ source }: { source: string }) {
+  return (
+    <div className="attendee-legal-notice">
+      <Markdown
+        remarkPlugins={[remarkBreaks]}
+        allowedElements={['p', 'a', 'strong', 'em', 'br']}
+        unwrapDisallowed
+        components={{
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {source}
+      </Markdown>
+    </div>
+  )
+}
+
 export function AttendeeFooter({
   eventTitle,
   legalNotice,
@@ -41,9 +68,7 @@ export function AttendeeFooter({
           cre8ion Onda
         </a>
       </p>
-      {legalNotice ? (
-        <p style={{ marginTop: '0.75rem', whiteSpace: 'pre-wrap' }}>{legalNotice}</p>
-      ) : null}
+      {legalNotice?.trim() ? <LegalNoticeMarkdown source={legalNotice.trim()} /> : null}
     </footer>
   )
 }

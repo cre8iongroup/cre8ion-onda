@@ -53,6 +53,22 @@ export function formatSessionTime(ms: number, timeZone: string): string {
   }
 }
 
+/** Longer datetime for session waiting state (attendee-facing). */
+export function formatSessionDateTime(ms: number, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      timeZone,
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(ms))
+  } catch {
+    return new Date(ms).toLocaleString()
+  }
+}
+
 export type DayGroup = {
   dayKey: string
   label: string

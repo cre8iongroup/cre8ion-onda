@@ -60,7 +60,8 @@ export default function LegalNoticePanel({
           style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}
         >
           Optional markdown for a short per-show attribution or terms message (e.g. powered-by
-          line + client terms link). Not shown to attendees yet — storage only until Phase 5.
+          line + client terms link). Shown on attendee footers — use paragraphs, bold, italic,
+          and links only.
         </p>
         <textarea
           id="legal-notice"

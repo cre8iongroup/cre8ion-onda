@@ -224,6 +224,7 @@ export async function loadPublicSessionById(sessionId: string): Promise<{
   session: PublicSession
   show: PublicShow
   branding: EffectiveBranding
+  room: { id: string; name: string } | null
 } | null> {
   const fs = getAdminFirestore()
 
@@ -241,17 +242,24 @@ export async function loadPublicSessionById(sessionId: string): Promise<{
     if (!session) continue
 
     let branding = show.branding
+    let room: { id: string; name: string } | null = null
     if (session.roomId) {
       const roomSnap = await fs.doc(`shows/${showDoc.id}/rooms/${session.roomId}`).get()
       if (roomSnap.exists) {
+        const roomData = roomSnap.data() as RoomDoc
         branding = effectiveRoomBranding(
           (showDoc.data() as ShowDoc).branding,
-          (roomSnap.data() as RoomDoc).branding,
+          roomData.branding,
         )
+        room = { id: session.roomId, name: roomData.name }
+      } else {
+        // Fall back to denormalized show.rooms[] name if subcollection doc missing.
+        const listed = show.rooms.find((r) => r.id === session.roomId)
+        if (listed) room = { id: listed.id, name: listed.name }
       }
     }
 
-    return { session, show, branding }
+    return { session, show, branding, room }
   }
   return null
 }

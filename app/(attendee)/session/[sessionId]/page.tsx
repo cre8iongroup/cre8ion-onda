@@ -14,13 +14,17 @@ export default async function SessionPage({
   const result = await loadPublicSessionById(sessionId)
   if (!result) notFound()
 
-  const { session, show, branding } = result
+  const { session, show, branding, room } = result
 
   return (
     <LiveCaptionFeed
       sessionId={session.id}
       title={session.friendlyName || session.title}
       showName={show.name}
+      showTimezone={show.showTimezone}
+      scheduledStartMs={session.scheduledStartMs}
+      legalNotice={show.legalNotice}
+      room={room}
       branding={branding}
       initialFeedState={session.feedState}
     />

@@ -112,10 +112,10 @@ export default function SessionEditClient({
       </p>
       <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-8)' }}>
         <a
+          className="admin-public-link"
           href={sessionPublicUrl(sessionId)}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: 'inherit' }}
         >
           /session/{sessionId}
         </a>

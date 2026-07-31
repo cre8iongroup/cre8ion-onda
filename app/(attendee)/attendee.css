@@ -18,10 +18,13 @@
 
 .attendee-logo {
   display: block;
-  max-height: 56px;
+  max-height: 72px;
+  max-width: min(320px, 100%);
   width: auto;
+  height: auto;
   margin-bottom: var(--space-6);
   object-fit: contain;
+  object-position: left center;
 }
 
 .attendee-title {

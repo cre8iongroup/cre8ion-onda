@@ -6,7 +6,11 @@
 import QRCode from 'qrcode'
 import { FieldValue } from 'firebase-admin/firestore'
 import { getAdminFirestore, getAdminStorage } from '@/lib/firebase/admin'
-import { roomPublicUrl, sessionPublicUrl } from '@/lib/attendee/urls'
+import {
+  getPublicAppOrigin,
+  roomPublicUrl,
+  sessionPublicUrl,
+} from '@/lib/attendee/urls'
 
 export type QrTargetType = 'room' | 'session'
 export type QrFormat = 'png' | 'svg'
@@ -107,6 +111,13 @@ export async function persistQrPair(
   id: string,
 ): Promise<{ pngUrl: string; targetUrl: string }> {
   const targetUrl = qrTargetUrl(type, id)
+  // Defense in depth: never persist a QR that points at localhost in prod.
+  if (/localhost|127\.0\.0\.1/.test(targetUrl) && process.env.K_SERVICE) {
+    throw new Error(
+      `Refusing to encode localhost QR target (${targetUrl}). ` +
+        `Public origin resolved to ${getPublicAppOrigin()} — fix ONDA_PUBLIC_APP_URL / NEXT_PUBLIC_APP_URL.`,
+    )
+  }
   const png = await generateQrBuffer(targetUrl, 'png')
   const svg = await generateQrBuffer(targetUrl, 'svg')
   const pngPath = qrStoragePath(showId, type, id, 'png')

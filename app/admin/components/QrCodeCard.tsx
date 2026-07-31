@@ -136,10 +136,10 @@ export default function QrCodeCard({
 
   const deepLink = (
     <a
+      className="admin-public-link"
       href={absoluteHint}
       target="_blank"
       rel="noopener noreferrer"
-      style={{ color: 'inherit', wordBreak: 'break-all' }}
     >
       <code>{absoluteHint}</code>
     </a>

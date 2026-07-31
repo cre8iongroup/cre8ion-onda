@@ -113,10 +113,10 @@ export default function RoomEditClient({
       <p style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>{room.name}</p>
       <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-8)' }}>
         <a
+          className="admin-public-link"
           href={roomPublicUrl(roomId)}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: 'inherit' }}
         >
           /room/{roomId}
         </a>

@@ -1,0 +1,23 @@
+# Firebase App Hosting — production backend config
+# https://firebase.google.com/docs/app-hosting/configure
+#
+# IMPORTANT: Console env vars override this file. If
+# NEXT_PUBLIC_APP_URL=http://localhost:3000 was pasted from .env.local
+# into the Firebase console, delete or fix it there — otherwise QR
+# payloads keep encoding localhost even after this lands.
+
+env:
+  # Inlined into client + server bundles at build time (Next.js NEXT_PUBLIC_*).
+  - variable: NEXT_PUBLIC_APP_URL
+    value: https://cre8ion-onda.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Non-inlined server override — readable at Cloud Run runtime even if a
+  # stale build baked the wrong NEXT_PUBLIC value. Prefer this for QR encode.
+  - variable: ONDA_PUBLIC_APP_URL
+    value: https://cre8ion-onda.app
+    availability:
+      - BUILD
+      - RUNTIME

@@ -182,7 +182,21 @@ export default function BrandingPanel({
         <label className="label">Logo</label>
         {logoURL ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={logoURL} alt="" style={{ maxHeight: 48, marginBottom: 8, display: 'block' }} />
+          <img
+            src={logoURL}
+            alt="Show logo preview"
+            style={{
+              display: 'block',
+              maxHeight: 64,
+              maxWidth: 'min(280px, 100%)',
+              width: 'auto',
+              height: 'auto',
+              objectFit: 'contain',
+              objectPosition: 'left center',
+              marginBottom: 8,
+              background: 'transparent',
+            }}
+          />
         ) : null}
         <input
           ref={fileRef}

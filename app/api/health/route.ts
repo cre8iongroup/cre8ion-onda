@@ -5,6 +5,7 @@ import {
   REQUIRED_FIREBASE_PROJECT_ID,
   resolveFirebaseStorageBucket,
 } from '@/lib/firebase/admin'
+import { getPublicAppOrigin, PRODUCTION_PUBLIC_ORIGIN } from '@/lib/attendee/urls'
 
 /**
  * GET /api/health
@@ -30,6 +31,9 @@ export async function GET() {
       }
     }
 
+    const publicAppOrigin = getPublicAppOrigin()
+    const publicAppOriginIsLocalhost = /localhost|127\.0\.0\.1/.test(publicAppOrigin)
+
     return NextResponse.json({
       status: 'ok',
       service: 'onda',
@@ -41,6 +45,10 @@ export async function GET() {
       storageBucketSource: storageBucketSource ?? null,
       storageBucketExists,
       storageBucketError,
+      // QR + preview links encode against this origin.
+      publicAppOrigin,
+      publicAppOriginExpected: PRODUCTION_PUBLIC_ORIGIN,
+      publicAppOriginIsLocalhost,
       timestamp: new Date().toISOString(),
     })
   } catch (err) {

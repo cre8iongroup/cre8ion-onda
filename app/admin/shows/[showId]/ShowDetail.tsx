@@ -299,10 +299,10 @@ export default function ShowDetail({ showId }: { showId: string }) {
             {' · '}
             {show.branding?.portalURL ? (
               <a
+                className="admin-public-link"
                 href={showPublicUrl(show.branding.portalURL)}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: 'inherit' }}
               >
                 /show/{show.branding.portalURL}
               </a>

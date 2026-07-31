@@ -25,6 +25,7 @@ export function resolveCapabilities(user: UserDoc): Capabilities {
     canManageBranding:     overrides.canManageBranding     ?? base.canManageBranding,
     canManageOutputLayouts:overrides.canManageOutputLayouts?? base.canManageOutputLayouts,
     canDownloadQr:         overrides.canDownloadQr         ?? base.canDownloadQr,
+    canManageTech:         overrides.canManageTech         ?? base.canManageTech,
   }
 }
 

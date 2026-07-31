@@ -40,6 +40,7 @@ const DEFAULT_CAPABILITIES: Capabilities = {
   canManageBranding:     false,
   canManageOutputLayouts:false,
   canDownloadQr:         false,
+  canManageTech:         false,
 }
 
 export function useAuth(): AuthState & AuthActions {

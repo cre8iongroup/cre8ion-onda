@@ -30,6 +30,7 @@ const CAPABILITY_OPTIONS: Array<{ key: keyof Capabilities; label: string }> = [
   { key: 'canManageBranding', label: 'Manage branding' },
   { key: 'canManageOutputLayouts', label: 'Manage output layouts' },
   { key: 'canDownloadQr', label: 'Download QR codes' },
+  { key: 'canManageTech', label: 'Manage tech / Operator settings' },
 ]
 
 const createUserSchema = z.object({

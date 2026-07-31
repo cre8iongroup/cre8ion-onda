@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   collection,
@@ -21,13 +21,17 @@ import RoomsPanel, { collectSessionRoomIds } from './RoomsPanel'
 import TechCredentialPanel from './TechCredentialPanel'
 import BrandingPanel from './BrandingPanel'
 import ShowLinksPanel from './ShowLinksPanel'
-import PublishTimezonePanel from './PublishTimezonePanel'
+import PublishPanel from './PublishPanel'
+import TimezonePanel from './TimezonePanel'
+import QrCodesTab from './QrCodesTab'
 import {
   canHideSession,
   sessionStatusBadgeClass,
   sessionStatusLabel,
 } from '@/lib/sessionStatus'
 import { resolveRoomName } from '@/lib/rooms'
+
+type ShowTab = 'overview' | 'branding' | 'rooms' | 'qr' | 'tech'
 
 function formatDateRange(start?: Timestamp, end?: Timestamp): string {
   if (!start || !end) return 'Dates TBD'
@@ -57,11 +61,35 @@ export default function ShowDetail({ showId }: { showId: string }) {
   const [draftBusyId, setDraftBusyId] = useState<string | null>(null)
   const [draftError, setDraftError] = useState<string | null>(null)
   const [resetBusyId, setResetBusyId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<ShowTab | null>(null)
 
-  const canCreate = Boolean(capabilities?.canCreateShows || capabilities?.canEditShows)
-  const canEditSessions = canCreate
+  const canEditShows = Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)
   const canManageBranding = Boolean(capabilities?.canManageBranding)
   const canDownloadQr = Boolean(capabilities?.canDownloadQr)
+  const canManageTech = Boolean(capabilities?.canManageTech)
+  const canGenerateQr = canEditShows
+
+  const tabs = useMemo(() => {
+    const list: Array<{ id: ShowTab; label: string }> = []
+    if (canEditShows) list.push({ id: 'overview', label: 'Overview' })
+    if (canManageBranding) list.push({ id: 'branding', label: 'Branding' })
+    if (canEditShows) list.push({ id: 'rooms', label: 'Rooms and sessions' })
+    if (canDownloadQr) list.push({ id: 'qr', label: 'QR codes' })
+    if (canManageTech) list.push({ id: 'tech', label: 'Tech' })
+    return list
+  }, [canEditShows, canManageBranding, canDownloadQr, canManageTech])
+
+  useEffect(() => {
+    if (tabs.length === 0) {
+      setActiveTab(null)
+      return
+    }
+    setActiveTab((prev) => {
+      if (prev && tabs.some((t) => t.id === prev)) return prev
+      return tabs[0].id
+    })
+  }, [tabs])
+
   const rooms = show?.rooms ?? []
   const hasRooms = rooms.length > 0
   const sessionRoomIds = collectSessionRoomIds(sessions)
@@ -163,7 +191,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
         console.error('ShowDetail: failed to load show', err)
         setError(err.message || 'Failed to load show.')
         setLoadingShow(false)
-      }
+      },
     )
     return () => unsub()
   }, [showId])
@@ -172,7 +200,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
     const fs = getClientFirestore()
     const q = query(
       collection(fs, 'shows', showId, 'sessions'),
-      orderBy('scheduledStart', 'asc')
+      orderBy('scheduledStart', 'asc'),
     )
     const unsub = onSnapshot(
       q,
@@ -184,7 +212,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
         console.error('ShowDetail: failed to load sessions', err)
         setError(err.message || 'Failed to load sessions.')
         setLoadingSessions(false)
-      }
+      },
     )
     return () => unsub()
   }, [showId])
@@ -196,13 +224,13 @@ export default function ShowDetail({ showId }: { showId: string }) {
   }, [flash])
 
   const openCreate = useCallback(() => {
-    if (!canCreate) {
+    if (!canEditShows) {
       setError('You do not have permission to create sessions.')
       return
     }
     setError(null)
     setModalOpen(true)
-  }, [canCreate])
+  }, [canEditShows])
 
   if (loadingShow) {
     return (
@@ -227,6 +255,19 @@ export default function ShowDetail({ showId }: { showId: string }) {
     )
   }
 
+  if (tabs.length === 0) {
+    return (
+      <div className="panel-content">
+        <div className="alert alert-error" role="alert">
+          You do not have any capabilities on this show.
+        </div>
+        <Link href="/admin" className="btn btn-ghost">
+          ← Back to Shows
+        </Link>
+      </div>
+    )
+  }
+
   return (
     <div className="panel-content">
       <div style={{ marginBottom: 'var(--space-6)' }}>
@@ -242,7 +283,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
 
       <div
         className="flex items-center justify-between"
-        style={{ marginBottom: 'var(--space-8)', gap: 'var(--space-4)', flexWrap: 'wrap' }}
+        style={{ marginBottom: 'var(--space-6)', gap: 'var(--space-4)', flexWrap: 'wrap' }}
       >
         <div>
           <div className="flex items-center gap-4" style={{ marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
@@ -258,7 +299,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
             /show/{show.branding?.portalURL || '—'}
           </p>
         </div>
-        {canCreate && (
+        {canEditShows && activeTab === 'rooms' ? (
           <button
             id="btn-create-session"
             type="button"
@@ -267,228 +308,180 @@ export default function ShowDetail({ showId }: { showId: string }) {
           >
             + Create Session
           </button>
-        )}
+        ) : null}
       </div>
+
+      <nav
+        aria-label="Show sections"
+        style={{
+          display: 'flex',
+          gap: 4,
+          flexWrap: 'wrap',
+          marginBottom: 'var(--space-8)',
+          borderBottom: '1px solid var(--color-border)',
+          paddingBottom: 0,
+        }}
+      >
+        {tabs.map((tab) => {
+          const selected = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              className="btn btn-ghost btn-sm"
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                borderRadius: '8px 8px 0 0',
+                borderBottom: selected
+                  ? '2px solid var(--color-primary)'
+                  : '2px solid transparent',
+                color: selected ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                fontWeight: selected ? 600 : 400,
+              }}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </nav>
 
       {flash && (
         <div className="alert alert-success" role="status" style={{ marginBottom: 'var(--space-6)' }}>
           {flash}
         </div>
       )}
-
       {error && (
         <div className="alert alert-error" role="alert" style={{ marginBottom: 'var(--space-6)' }}>
           {error}
         </div>
       )}
-
       {draftError && (
         <div className="alert alert-error" role="alert" style={{ marginBottom: 'var(--space-6)' }}>
           {draftError}
         </div>
       )}
 
-      <section style={{ marginBottom: 'var(--space-10)' }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
-          Publish & timezone
-        </h2>
-        <PublishTimezonePanel
-          showId={show.id}
-          portalPublished={show.portalPublished}
-          showTimezone={show.showTimezone}
-          canEdit={Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)}
-          onFlash={setFlash}
-        />
-      </section>
+      {activeTab === 'overview' ? (
+        <>
+          <section style={{ marginBottom: 'var(--space-8)' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Publish</h2>
+            <PublishPanel
+              showId={show.id}
+              portalPublished={show.portalPublished}
+              canEdit={canEditShows}
+              onFlash={setFlash}
+            />
+          </section>
+          <section style={{ marginBottom: 'var(--space-8)' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Timezone</h2>
+            <TimezonePanel
+              showId={show.id}
+              showTimezone={show.showTimezone}
+              canEdit={canEditShows}
+              onFlash={setFlash}
+            />
+          </section>
+          <section style={{ marginBottom: 'var(--space-8)' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Show links</h2>
+            <ShowLinksPanel
+              showId={show.id}
+              links={show.links}
+              canEdit={canEditShows}
+              onFlash={setFlash}
+            />
+          </section>
+          <section>
+            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
+              Legal notice
+            </h2>
+            <LegalNoticePanel
+              showId={show.id}
+              legalNotice={show.branding?.legalNotice}
+              canEdit={canEditShows}
+              onFlash={setFlash}
+            />
+          </section>
+        </>
+      ) : null}
 
-      <section style={{ marginBottom: 'var(--space-10)' }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Branding</h2>
+      {activeTab === 'branding' ? (
         <BrandingPanel
           showId={show.id}
           branding={show.branding}
           canEdit={canManageBranding}
           onFlash={setFlash}
         />
-      </section>
+      ) : null}
 
-      <section style={{ marginBottom: 'var(--space-10)' }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Show links</h2>
-        <ShowLinksPanel
-          showId={show.id}
-          links={show.links}
-          canEdit={Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)}
-          onFlash={setFlash}
-        />
-      </section>
-
-      <section style={{ marginBottom: 'var(--space-10)' }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Tech access</h2>
-        <TechCredentialPanel
-          showId={show.id}
-          portalSlug={show.branding?.portalURL || ''}
-          hasCredential={Boolean(show.techCredential)}
-          createdBy={user?.uid || ''}
-          canEdit={Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)}
-        />
-      </section>
-
-      <section style={{ marginBottom: 'var(--space-10)' }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Rooms</h2>
-        <RoomsPanel
-          showId={show.id}
-          rooms={rooms}
-          sessionRoomIds={sessionRoomIds}
-          canEdit={canCreate}
-          onFlash={setFlash}
-        />
-      </section>
-
-      <section style={{ marginBottom: 'var(--space-10)' }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
-          Operator settings
-        </h2>
-        <OperatorSettingsPanel
-          showId={show.id}
-          transcriptionStyle={show.transcriptionStyle}
-          operatorInstructions={show.operatorInstructions}
-          canEdit={Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)}
-          onFlash={setFlash}
-        />
-      </section>
-
-      <section style={{ marginBottom: 'var(--space-10)' }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
-          Legal notice
-        </h2>
-        <LegalNoticePanel
-          showId={show.id}
-          legalNotice={show.branding?.legalNotice}
-          canEdit={Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)}
-          onFlash={setFlash}
-        />
-      </section>
-
-      <section>
-        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Sessions</h2>
-
-        {loadingSessions ? (
-          <div className="flex items-center justify-center" style={{ padding: 'var(--space-12)' }}>
-            <span className="spinner" aria-label="Loading sessions" />
-          </div>
-        ) : !hasRooms && sessions.length === 0 ? (
-          <div
-            className="card"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 'var(--space-12)',
-              textAlign: 'center',
-              gap: 'var(--space-4)',
-            }}
-          >
-            <h3 style={{ fontSize: 'var(--text-md)' }}>Add a room before creating sessions</h3>
-            <p style={{ maxWidth: 420, color: 'var(--color-text-secondary)' }}>
-              Sessions must be assigned to a room. Add one in Rooms above, or choose “+ Create new
-              room” when creating a session.
-            </p>
-            <button
-              id="btn-create-session-empty"
-              type="button"
-              className="btn btn-primary"
-              onClick={openCreate}
-              disabled={!canCreate}
-            >
-              + Create Session
-            </button>
-          </div>
-        ) : sessions.length === 0 ? (
-          <div
-            className="card"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 'var(--space-12)',
-              textAlign: 'center',
-              gap: 'var(--space-4)',
-            }}
-          >
-            <h3 style={{ fontSize: 'var(--text-md)' }}>No sessions yet</h3>
-            <p style={{ maxWidth: 360, color: 'var(--color-text-secondary)' }}>
-              Create a session for each talk or block in a room. Sessions hold live feed state,
-              transcripts, and review workflow.
-            </p>
-            <button
-              id="btn-create-session-empty"
-              type="button"
-              className="btn btn-primary"
-              onClick={openCreate}
-              disabled={!canCreate}
-            >
-              + Create Session
-            </button>
-          </div>
-        ) : (
-          <div className="show-list">
-            {sessions.map((session) => (
-              <article key={session.id} id={`session-${session.id}`} className="card show-list-item">
-                <div className="flex items-center justify-between gap-4" style={{ flexWrap: 'wrap' }}>
-                  <div>
-                    <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>
-                      {(canEditSessions || canDownloadQr) ? (
-                        <Link href={`/admin/shows/${showId}/sessions/${session.id}`}>
-                          {session.title}
+      {activeTab === 'rooms' ? (
+        <>
+          <section style={{ marginBottom: 'var(--space-10)' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Rooms</h2>
+            <RoomsPanel
+              showId={show.id}
+              rooms={rooms}
+              sessionRoomIds={sessionRoomIds}
+              canEdit={canEditShows}
+              onFlash={setFlash}
+            />
+          </section>
+          <section>
+            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Sessions</h2>
+            {loadingSessions ? (
+              <div className="flex items-center justify-center" style={{ padding: 'var(--space-12)' }}>
+                <span className="spinner" aria-label="Loading sessions" />
+              </div>
+            ) : !hasRooms && sessions.length === 0 ? (
+              <div className="card" style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
+                <h3 style={{ fontSize: 'var(--text-md)' }}>Add a room before creating sessions</h3>
+              </div>
+            ) : sessions.length === 0 ? (
+              <div className="card" style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
+                <h3 style={{ fontSize: 'var(--text-md)' }}>No sessions yet</h3>
+              </div>
+            ) : (
+              <div className="show-list">
+                {sessions.map((session) => (
+                  <article key={session.id} id={`session-${session.id}`} className="card show-list-item">
+                    <div className="flex items-center justify-between gap-4" style={{ flexWrap: 'wrap' }}>
+                      <div>
+                        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>
+                          <Link href={`/admin/shows/${showId}/sessions/${session.id}`}>
+                            {session.title}
+                          </Link>
+                        </h3>
+                        <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                          {session.friendlyName}
+                          {` · ${resolveRoomName(rooms, session.roomId)}`}
+                        </p>
+                        <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
+                          {formatDateTime(session.scheduledStart)} – {formatDateTime(session.scheduledEnd)}
+                        </p>
+                      </div>
+                      <div className="flex gap-2" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span
+                          className={`badge ${sessionStatusBadgeClass({
+                            isDraft: session.isDraft,
+                            feedState: session.feedState,
+                          })}`}
+                        >
+                          {sessionStatusLabel(
+                            { isDraft: session.isDraft, feedState: session.feedState },
+                            'admin',
+                          )}
+                        </span>
+                        <Link
+                          href={`/admin/shows/${showId}/sessions/${session.id}`}
+                          className="btn btn-secondary btn-sm"
+                        >
+                          Edit
                         </Link>
-                      ) : (
-                        session.title
-                      )}
-                    </h3>
-                    <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                      {session.friendlyName}
-                      {` · ${resolveRoomName(rooms, session.roomId)}`}
-                    </p>
-                    <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
-                      {formatDateTime(session.scheduledStart)} – {formatDateTime(session.scheduledEnd)}
-                    </p>
-                  </div>
-                  <div className="flex gap-2" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span
-                      className={`badge ${sessionStatusBadgeClass({
-                        isDraft: session.isDraft,
-                        feedState: session.feedState,
-                      })}`}
-                    >
-                      {sessionStatusLabel(
-                        { isDraft: session.isDraft, feedState: session.feedState },
-                        'admin',
-                      )}
-                    </span>
-                    {(canEditSessions || canDownloadQr) ? (
-                      <Link
-                        href={`/admin/shows/${showId}/sessions/${session.id}`}
-                        className="btn btn-secondary btn-sm"
-                      >
-                        {canEditSessions ? 'Edit' : 'QR'}
-                      </Link>
-                    ) : null}
-                    {canEditSessions ? (
-                      <>
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
-                          disabled={
-                            draftBusyId === session.id || resetBusyId === session.id
-                          }
-                          title={
-                            session.isDraft
-                              ? 'Make visible to Onda Operator and attendees'
-                              : canHideSession(session.feedState)
-                                ? 'Hide from Onda Operator and attendees'
-                                : 'End the session before hiding it'
-                          }
+                          disabled={draftBusyId === session.id || resetBusyId === session.id}
                           onClick={() => toggleDraft(session)}
                         >
                           {session.isDraft ? 'Make visible' : 'Hide'}
@@ -496,29 +489,63 @@ export default function ShowDetail({ showId }: { showId: string }) {
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
-                          disabled={
-                            draftBusyId === session.id || resetBusyId === session.id
-                          }
-                          title="Force feedState back to Standby from any state (Admin override)"
+                          disabled={draftBusyId === session.id || resetBusyId === session.id}
                           onClick={() => resetSession(session)}
                         >
                           {resetBusyId === session.id ? 'Resetting…' : 'Reset session'}
                         </button>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      ) : null}
+
+      {activeTab === 'qr' ? (
+        <QrCodesTab
+          showId={show.id}
+          rooms={rooms}
+          sessions={sessions}
+          canGenerate={canGenerateQr}
+          canDownload={canDownloadQr}
+        />
+      ) : null}
+
+      {activeTab === 'tech' ? (
+        <>
+          <section style={{ marginBottom: 'var(--space-10)' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Tech access</h2>
+            <TechCredentialPanel
+              showId={show.id}
+              portalSlug={show.branding?.portalURL || ''}
+              hasCredential={Boolean(show.techCredential)}
+              createdBy={user?.uid || ''}
+              canEdit={canManageTech}
+            />
+          </section>
+          <section>
+            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
+              Operator settings
+            </h2>
+            <OperatorSettingsPanel
+              showId={show.id}
+              transcriptionStyle={show.transcriptionStyle}
+              operatorInstructions={show.operatorInstructions}
+              canEdit={canManageTech}
+              onFlash={setFlash}
+            />
+          </section>
+        </>
+      ) : null}
 
       <CreateSessionModal
         open={modalOpen}
         showId={showId}
         createdBy={user?.uid || ''}
-        canCreate={canCreate}
+        canCreate={canEditShows}
         defaultLanguages={show.defaultLanguages || ['en']}
         rooms={rooms}
         onClose={() => setModalOpen(false)}

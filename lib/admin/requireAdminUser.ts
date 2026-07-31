@@ -61,3 +61,25 @@ export function requireShowEditCapability(capabilities: Capabilities): void {
     )
   }
 }
+
+export function requireTechManageCapability(capabilities: Capabilities): void {
+  if (!capabilities.canManageTech) {
+    throw new AdminAuthError(403, 'forbidden', 'Missing canManageTech capability')
+  }
+}
+
+export function requireQrGenerateCapability(capabilities: Capabilities): void {
+  if (!capabilities.canEditShows && !capabilities.canCreateShows) {
+    throw new AdminAuthError(
+      403,
+      'forbidden',
+      'Missing canEditShows — QR generation requires show edit access',
+    )
+  }
+}
+
+export function requireQrDownloadCapability(capabilities: Capabilities): void {
+  if (!capabilities.canDownloadQr) {
+    throw new AdminAuthError(403, 'forbidden', 'Missing canDownloadQr')
+  }
+}

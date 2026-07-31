@@ -20,6 +20,11 @@ export interface Capabilities {
   canManageOutputLayouts: boolean
   /** Download Room/Session QR codes for assigned shows (Contributor primary cap). */
   canDownloadQr: boolean
+  /**
+   * Manage Tech access credential + Operator settings on a show.
+   * Independent of canEditShows — Editors may lack this unless force-allowed.
+   */
+  canManageTech: boolean
 }
 
 export type CustomPermissions = Partial<Capabilities>

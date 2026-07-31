@@ -6,7 +6,7 @@ import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
 import type { SessionDoc, ShowDoc, WithId } from '@/types'
-import QrDownloadPanel from '@/app/admin/components/QrDownloadPanel'
+import QrCodeCard from '@/app/admin/components/QrCodeCard'
 
 function toLocalInput(ts?: Timestamp): string {
   if (!ts) return ''
@@ -25,6 +25,7 @@ export default function SessionEditClient({
   const { capabilities } = useAuthContext()
   const canEdit = Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)
   const canDownload = Boolean(capabilities?.canDownloadQr)
+  const canGenerate = canEdit
   const readOnlyQr = canDownload && !canEdit
 
   const [show, setShow] = useState<WithId<ShowDoc> | null>(null)
@@ -158,11 +159,13 @@ export default function SessionEditClient({
         </section>
       ) : null}
 
-      <QrDownloadPanel
+      <QrCodeCard
         type="session"
         showId={showId}
         id={sessionId}
+        label={session.friendlyName || session.title}
         deepLinkPath={`/session/${sessionId}`}
+        canGenerate={canGenerate}
         canDownload={canDownload}
         existingUrl={session.qrCodeUrl}
       />

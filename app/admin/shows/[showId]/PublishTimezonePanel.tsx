@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { doc, updateDoc } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
 import { DEFAULT_SHOW_TIMEZONE } from '@/lib/branding'
@@ -36,6 +36,11 @@ export default function PublishTimezonePanel({
   const [published, setPublished] = useState(portalPublished)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setTz(showTimezone || DEFAULT_SHOW_TIMEZONE)
+    setPublished(portalPublished)
+  }, [showTimezone, portalPublished])
 
   async function save() {
     if (!canEdit) return

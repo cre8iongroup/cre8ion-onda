@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { doc, updateDoc } from 'firebase/firestore'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { getClientFirestore, getClientStorage } from '@/lib/firebase/client'
@@ -36,6 +36,14 @@ export default function BrandingPanel({
   const [logoURL, setLogoURL] = useState(branding.logoURL || '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setPrimaryColor(branding.primaryColor || DEFAULT_PRIMARY_COLOR)
+    setSecondaryColor(branding.secondaryColor || DEFAULT_SECONDARY_COLOR)
+    setBackgroundColor(branding.backgroundColor || DEFAULT_BACKGROUND_COLOR)
+    setTextColor(branding.textColor || DEFAULT_TEXT_COLOR)
+    setLogoURL(branding.logoURL || '')
+  }, [branding])
 
   async function uploadLogo(file: File) {
     const ext = file.name.split('.').pop()?.toLowerCase() || 'png'

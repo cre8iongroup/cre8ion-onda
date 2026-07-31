@@ -27,6 +27,9 @@ export default function QrCodesTab({
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkMessage, setBulkMessage] = useState<string | null>(null)
   const [bulkError, setBulkError] = useState<string | null>(null)
+  /** Immediate URL overrides after bulk regen (before / in addition to Firestore snapshots). */
+  const [qrUrlOverrides, setQrUrlOverrides] = useState<Record<string, string>>({})
+  const [listEpoch, setListEpoch] = useState(0)
 
   useEffect(() => {
     const fs = getClientFirestore()
@@ -35,6 +38,14 @@ export default function QrCodesTab({
     })
     return () => unsub()
   }, [showId])
+
+  function qrKey(type: 'room' | 'session', id: string) {
+    return `${type}:${id}`
+  }
+
+  function resolveQrUrl(type: 'room' | 'session', id: string, fallback?: string) {
+    return qrUrlOverrides[qrKey(type, id)] || fallback || undefined
+  }
 
   async function regenerateAllExisting() {
     if (!canGenerate || bulkBusy) return
@@ -61,12 +72,31 @@ export default function QrCodesTab({
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
         publicAppOrigin?: string
-        regenerated?: Array<{ type: string; id: string; name: string; targetUrl: string }>
+        regenerated?: Array<{
+          type: 'room' | 'session'
+          id: string
+          name: string
+          targetUrl: string
+          pngUrl: string
+        }>
         failed?: Array<{ type: string; id: string; error: string }>
       }
       if (!res.ok) throw new Error(json.error || `Regenerate failed (${res.status})`)
       const n = json.regenerated?.length ?? 0
       const fail = json.failed?.length ?? 0
+
+      // Apply new cache-busted URLs immediately so thumbnails reload without a page refresh.
+      if (json.regenerated && json.regenerated.length > 0) {
+        setQrUrlOverrides((prev) => {
+          const next = { ...prev }
+          for (const row of json.regenerated!) {
+            if (row.pngUrl) next[qrKey(row.type, row.id)] = row.pngUrl
+          }
+          return next
+        })
+        setListEpoch((e) => e + 1)
+      }
+
       setBulkMessage(
         `Regenerated ${n} code(s) against ${json.publicAppOrigin}.${fail ? ` ${fail} failed.` : ''}`,
       )
@@ -163,6 +193,7 @@ export default function QrCodesTab({
                 Room QR
               </p>
               <QrCodeCard
+                key={`room-${room.id}-${listEpoch}`}
                 type="room"
                 showId={showId}
                 id={room.id}
@@ -170,7 +201,7 @@ export default function QrCodesTab({
                 deepLinkPath={`/room/${room.id}`}
                 canGenerate={canGenerate}
                 canDownload={canDownload}
-                existingUrl={qrByRoomId.get(room.id)}
+                existingUrl={resolveQrUrl('room', room.id, qrByRoomId.get(room.id))}
                 variant="row"
               />
 
@@ -189,7 +220,7 @@ export default function QrCodesTab({
                   <div>
                     {roomSessions.map((session) => (
                       <QrCodeCard
-                        key={session.id}
+                        key={`session-${session.id}-${listEpoch}`}
                         type="session"
                         showId={showId}
                         id={session.id}
@@ -197,7 +228,7 @@ export default function QrCodesTab({
                         deepLinkPath={`/session/${session.id}`}
                         canGenerate={canGenerate}
                         canDownload={canDownload}
-                        existingUrl={session.qrCodeUrl}
+                        existingUrl={resolveQrUrl('session', session.id, session.qrCodeUrl)}
                         variant="row"
                       />
                     ))}
@@ -232,7 +263,7 @@ export default function QrCodesTab({
           <div style={{ padding: '0 var(--space-4) var(--space-4)' }}>
             {orphanSessions.map((session) => (
               <QrCodeCard
-                key={session.id}
+                key={`orphan-${session.id}-${listEpoch}`}
                 type="session"
                 showId={showId}
                 id={session.id}
@@ -240,7 +271,7 @@ export default function QrCodesTab({
                 deepLinkPath={`/session/${session.id}`}
                 canGenerate={canGenerate}
                 canDownload={canDownload}
-                existingUrl={session.qrCodeUrl}
+                existingUrl={resolveQrUrl('session', session.id, session.qrCodeUrl)}
                 variant="row"
               />
             ))}

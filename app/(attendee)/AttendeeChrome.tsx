@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import type { EffectiveBranding } from '@/types'
+import { AttendeeThemeColor } from './AttendeeThemeColor'
 import './attendee.css'
 
 export function brandingStyle(branding: EffectiveBranding): CSSProperties {
@@ -23,6 +24,7 @@ export function AttendeeShell({
 }) {
   return (
     <div className="attendee-shell" style={brandingStyle(branding)}>
+      <AttendeeThemeColor backgroundColor={branding.backgroundColor} />
       <div className="attendee-inner">{children}</div>
     </div>
   )

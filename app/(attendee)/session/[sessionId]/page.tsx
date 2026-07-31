@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { loadPublicSessionById } from '@/lib/attendee/load'
 import LiveCaptionFeed from './LiveCaptionFeed'
-import '../../attendee.css'
+import '@/app/(attendee)/attendee.css'
 
 export const dynamic = 'force-dynamic'
 

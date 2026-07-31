@@ -54,7 +54,7 @@ export function WhyOndaModal({ open, onClose }: WhyOndaModalProps) {
             ✕
           </button>
           <h2 id={titleId} className="why-onda-hero-word">
-            Onda
+            Why Onda?
           </h2>
         </div>
 

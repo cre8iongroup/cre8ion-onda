@@ -587,6 +587,15 @@ tbody tr:hover td {
 /* ─────────────────────────────────────────────────
    Why Onda? modal
    ───────────────────────────────────────────────── */
+.why-onda-backdrop {
+  /* Darker than default .modal-backdrop so the page clearly reads as inactive */
+  background: rgba(5, 5, 10, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  /* Explicit root stacking — safe even if a future caller forgets the portal */
+  z-index: 2000;
+}
+
 .why-onda-panel {
   width: min(480px, 100%);
   max-height: min(90dvh, 720px);
@@ -594,6 +603,8 @@ tbody tr:hover td {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 1;
 }
 
 .why-onda-hero {
@@ -647,9 +658,10 @@ tbody tr:hover td {
   margin-bottom: 0;
 }
 
-.why-onda-body strong {
+.why-onda-body em {
   color: var(--color-text-primary);
-  font-weight: 600;
+  font-style: italic;
+  font-weight: inherit;
 }
 
 .why-onda-link {

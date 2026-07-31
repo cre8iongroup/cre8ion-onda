@@ -17,6 +17,7 @@ export const BASE_ROLE_CAPS: Record<BaseRole, Capabilities> = {
     canExportTranscripts: true,
     canManageBranding:    true,
     canManageOutputLayouts:true,
+    canDownloadQr:        true,
   },
   editor: {
     canCreateShows:       true,
@@ -30,6 +31,21 @@ export const BASE_ROLE_CAPS: Record<BaseRole, Capabilities> = {
     canExportTranscripts: true,
     canManageBranding:    true,
     canManageOutputLayouts:true,
+    canDownloadQr:        true,
+  },
+  contributor: {
+    canCreateShows:       false,
+    canEditShows:         false,
+    canManageUsers:       false,
+    canAccessTechPanel:   false,
+    canControlLiveFeed:   false,
+    canViewPrivatePreview:false,
+    canApproveTranscripts:false,
+    canPublishSessions:   false,
+    canExportTranscripts: false,
+    canManageBranding:    false,
+    canManageOutputLayouts:false,
+    canDownloadQr:        true,
   },
   tech: {
     canCreateShows:       false,
@@ -43,6 +59,7 @@ export const BASE_ROLE_CAPS: Record<BaseRole, Capabilities> = {
     canExportTranscripts: false,
     canManageBranding:    false,
     canManageOutputLayouts:true,
+    canDownloadQr:        false,
   },
   reviewer: {
     canCreateShows:       false,
@@ -56,5 +73,9 @@ export const BASE_ROLE_CAPS: Record<BaseRole, Capabilities> = {
     canExportTranscripts: true,
     canManageBranding:    false,
     canManageOutputLayouts:false,
+    canDownloadQr:        false,
   },
 }
+
+// Re-export for callers that still import CustomPermissions via this module
+export type { CustomPermissions }

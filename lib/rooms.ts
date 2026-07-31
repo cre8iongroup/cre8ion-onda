@@ -1,9 +1,21 @@
 /**
  * Show-scoped rooms helpers (Admin + unlock resolution).
- * Rooms live as an array on ShowDoc — not a subcollection.
+ *
+ * Canonical room docs: shows/{showId}/rooms/{roomId}
+ * Denormalized catalog: ShowDoc.rooms[] {id,name} — kept in sync for Operator unlock.
  */
 
-import type { ShowRoom } from '@/types'
+import {
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  type Firestore,
+  Timestamp,
+} from 'firebase/firestore'
+import type { RoomDoc, ShowRoom } from '@/types'
+import { defaultRoomDocFields } from '@/lib/branding'
 
 /** Stable client-generated id for a new room entry. */
 export function newRoomId(): string {
@@ -49,4 +61,70 @@ export function sortRoomsByName(rooms: ShowRoom[] | null | undefined): ShowRoom[
   return [...(rooms ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
   )
+}
+
+export function roomDocPath(showId: string, roomId: string): string {
+  return `shows/${showId}/rooms/${roomId}`
+}
+
+export function denormalizedRoomsFromList(rooms: ShowRoom[]): ShowRoom[] {
+  return rooms.map((r) => ({ id: r.id, name: r.name }))
+}
+
+/**
+ * Dual-write: create room subcollection doc + update ShowDoc.rooms[].
+ */
+export async function createRoomDualWrite(
+  fs: Firestore,
+  showId: string,
+  rooms: ShowRoom[],
+  name: string,
+  createdBy: string,
+  roomId?: string,
+): Promise<ShowRoom> {
+  const id = roomId || newRoomId()
+  const trimmed = normalizeRoomName(name)
+  const entry: ShowRoom = { id, name: trimmed }
+  const next = [...rooms, entry]
+
+  const payload: RoomDoc = defaultRoomDocFields(trimmed, createdBy, Timestamp.now())
+  await setDoc(doc(fs, 'shows', showId, 'rooms', id), payload)
+  await updateDoc(doc(fs, 'shows', showId), { rooms: next })
+  return entry
+}
+
+/**
+ * Dual-write: rename room subcollection doc + update ShowDoc.rooms[].
+ */
+export async function renameRoomDualWrite(
+  fs: Firestore,
+  showId: string,
+  rooms: ShowRoom[],
+  roomId: string,
+  name: string,
+): Promise<ShowRoom[]> {
+  const trimmed = normalizeRoomName(name)
+  const next = rooms.map((r) => (r.id === roomId ? { ...r, name: trimmed } : r))
+  await updateDoc(doc(fs, 'shows', showId, 'rooms', roomId), { name: trimmed })
+  await updateDoc(doc(fs, 'shows', showId), { rooms: next })
+  return next
+}
+
+/**
+ * Dual-write: delete room subcollection doc + update ShowDoc.rooms[].
+ */
+export async function deleteRoomDualWrite(
+  fs: Firestore,
+  showId: string,
+  rooms: ShowRoom[],
+  roomId: string,
+): Promise<ShowRoom[]> {
+  const next = rooms.filter((r) => r.id !== roomId)
+  await deleteDoc(doc(fs, 'shows', showId, 'rooms', roomId))
+  await updateDoc(doc(fs, 'shows', showId), { rooms: next })
+  return next
+}
+
+export function roomsCollection(fs: Firestore, showId: string) {
+  return collection(fs, 'shows', showId, 'rooms')
 }

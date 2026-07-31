@@ -14,6 +14,7 @@ import { NextResponse, type NextRequest } from 'next/server'
  * happens in each panel's server component layout.
  *
  * Attendee and output views are fully public — no auth check.
+ * Canonical show home: /show/[slug]. Legacy /portal/[slug] redirects there.
  */
 
 // Routes that require authentication

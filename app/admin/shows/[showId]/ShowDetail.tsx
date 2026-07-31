@@ -19,6 +19,9 @@ import LegalNoticePanel from './LegalNoticePanel'
 import OperatorSettingsPanel from './OperatorSettingsPanel'
 import RoomsPanel, { collectSessionRoomIds } from './RoomsPanel'
 import TechCredentialPanel from './TechCredentialPanel'
+import BrandingPanel from './BrandingPanel'
+import ShowLinksPanel from './ShowLinksPanel'
+import PublishTimezonePanel from './PublishTimezonePanel'
 import {
   canHideSession,
   sessionStatusBadgeClass,
@@ -57,6 +60,8 @@ export default function ShowDetail({ showId }: { showId: string }) {
 
   const canCreate = Boolean(capabilities?.canCreateShows || capabilities?.canEditShows)
   const canEditSessions = canCreate
+  const canManageBranding = Boolean(capabilities?.canManageBranding)
+  const canDownloadQr = Boolean(capabilities?.canDownloadQr)
   const rooms = show?.rooms ?? []
   const hasRooms = rooms.length > 0
   const sessionRoomIds = collectSessionRoomIds(sessions)
@@ -250,7 +255,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
           <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
             {formatDateRange(show.startDate, show.endDate)}
             {' · '}
-            /portal/{show.branding?.portalURL || '—'}
+            /show/{show.branding?.portalURL || '—'}
           </p>
         </div>
         {canCreate && (
@@ -282,6 +287,39 @@ export default function ShowDetail({ showId }: { showId: string }) {
           {draftError}
         </div>
       )}
+
+      <section style={{ marginBottom: 'var(--space-10)' }}>
+        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
+          Publish & timezone
+        </h2>
+        <PublishTimezonePanel
+          showId={show.id}
+          portalPublished={show.portalPublished}
+          showTimezone={show.showTimezone}
+          canEdit={Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)}
+          onFlash={setFlash}
+        />
+      </section>
+
+      <section style={{ marginBottom: 'var(--space-10)' }}>
+        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Branding</h2>
+        <BrandingPanel
+          showId={show.id}
+          branding={show.branding}
+          canEdit={canManageBranding}
+          onFlash={setFlash}
+        />
+      </section>
+
+      <section style={{ marginBottom: 'var(--space-10)' }}>
+        <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Show links</h2>
+        <ShowLinksPanel
+          showId={show.id}
+          links={show.links}
+          canEdit={Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)}
+          onFlash={setFlash}
+        />
+      </section>
 
       <section style={{ marginBottom: 'var(--space-10)' }}>
         <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Tech access</h2>
@@ -400,7 +438,13 @@ export default function ShowDetail({ showId }: { showId: string }) {
                 <div className="flex items-center justify-between gap-4" style={{ flexWrap: 'wrap' }}>
                   <div>
                     <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>
-                      {session.title}
+                      {(canEditSessions || canDownloadQr) ? (
+                        <Link href={`/admin/shows/${showId}/sessions/${session.id}`}>
+                          {session.title}
+                        </Link>
+                      ) : (
+                        session.title
+                      )}
                     </h3>
                     <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                       {session.friendlyName}
@@ -422,6 +466,14 @@ export default function ShowDetail({ showId }: { showId: string }) {
                         'admin',
                       )}
                     </span>
+                    {(canEditSessions || canDownloadQr) ? (
+                      <Link
+                        href={`/admin/shows/${showId}/sessions/${session.id}`}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        {canEditSessions ? 'Edit' : 'QR'}
+                      </Link>
+                    ) : null}
                     {canEditSessions ? (
                       <>
                         <button

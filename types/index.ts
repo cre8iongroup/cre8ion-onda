@@ -4,7 +4,7 @@ import { Timestamp } from 'firebase/firestore'
 // Permissions & Roles
 // ─────────────────────────────────────────────
 
-export type BaseRole = 'admin' | 'editor' | 'tech' | 'reviewer'
+export type BaseRole = 'admin' | 'editor' | 'contributor' | 'tech' | 'reviewer'
 
 export interface Capabilities {
   canCreateShows: boolean
@@ -18,6 +18,8 @@ export interface Capabilities {
   canExportTranscripts: boolean
   canManageBranding: boolean
   canManageOutputLayouts: boolean
+  /** Download Room/Session QR codes for assigned shows (Contributor primary cap). */
+  canDownloadQr: boolean
 }
 
 export type CustomPermissions = Partial<Capabilities>
@@ -57,23 +59,72 @@ export interface GlossaryEntry {
 
 export type EndSessionBehavior = 'message' | 'showTranscript' | 'redirect' | 'brandedEndCard'
 
+/**
+ * Show-level branding.
+ *
+ * Accent model (Phase 5):
+ * - `primaryColor` / `secondaryColor` remain the persisted accent pair for
+ *   backward compatibility with existing shows and Operator defaults.
+ * - `accentColors` (1–2 entries) is the attendee-facing accent list. When
+ *   absent/empty, effective accents are `[primaryColor, secondaryColor]`.
+ * - Branding editor keeps them in sync: accentColors[0/1] ↔ primary/secondary.
+ * - `backgroundColor` / `textColor` are distinct from accents (not aliases).
+ */
 export interface ShowBranding {
-  primaryColor: string        // hex
-  secondaryColor: string      // hex
+  primaryColor: string        // hex — accent 1 (legacy + sync source)
+  secondaryColor: string      // hex — accent 2 (legacy + sync source)
+  /** Attendee accents (1–2). Prefer over primary/secondary when present. */
+  accentColors?: string[]
+  backgroundColor?: string    // hex — page/surface background
+  textColor?: string          // hex — primary body/headline text
   logoURL: string             // Firebase Storage URL
   endSessionBehavior: EndSessionBehavior
   endSessionMessage?: string
   redirectURL?: string        // required if endSessionBehavior === 'redirect'
-  portalURL: string           // slug for /portal/[slug] and v2 domain routing
+  /** Public slug for /show/[slug] (legacy /portal/[slug] redirects here). */
+  portalURL: string
   /**
    * Optional per-show legal / attribution markdown (e.g. "powered by" + client terms link).
-   * Admin-authored only for now — no attendee/output rendering until Phase 5.
-   *
-   * Phase 5 render note: restrict markdown to paragraphs, bold, italic, links,
-   * and line breaks only — no headings, no lists, no underline. Narrower than
-   * Operator Instructions; this is a short footer-style message.
+   * Rendered on attendee footers with a restricted markdown subset:
+   * paragraphs, bold, italic, links, and line breaks only.
    */
   legalNotice?: string
+}
+
+/** Ordered CMS link on the show home page. */
+export interface ShowLink {
+  title: string
+  url: string
+  order: number
+}
+
+/** Room-level branding override (when inherit is false). */
+export interface RoomBranding {
+  inherit: boolean
+  logoUrl?: string
+  backgroundColor?: string
+  textColor?: string
+  accentColors?: string[]
+}
+
+/**
+ * Full room document at shows/{showId}/rooms/{roomId}.
+ * ShowDoc.rooms[] remains a denormalized {id,name}[] for Operator unlock dual-write.
+ */
+export interface RoomDoc {
+  name: string
+  branding: RoomBranding
+  qrCodeUrl?: string
+  createdAt: Timestamp
+  createdBy: string
+}
+
+/** Resolved palette for attendee CSS variables (never includes secrets). */
+export interface EffectiveBranding {
+  logoUrl: string
+  backgroundColor: string
+  textColor: string
+  accentColors: string[]
 }
 
 // ─────────────────────────────────────────────
@@ -95,7 +146,16 @@ export interface ShowDoc {
   defaultLanguages: string[]  // e.g. ['en', 'es', 'pt', 'fr']
   portalPublished: boolean
   /**
-   * Per-show room catalog for session placement + Onda Operator room select.
+   * IANA timezone for attendee schedule day headers (e.g. "America/New_York").
+   * Required on new shows; older docs may lack it until Admin saves once
+   * (attendee loaders fall back to "America/New_York").
+   */
+  showTimezone: string
+  /** Admin-editable ordered links on the public show home. */
+  links?: ShowLink[]
+  /**
+   * Denormalized room catalog ({id,name}) for Onda Operator unlock dual-write.
+   * Canonical room docs live at shows/{showId}/rooms/{roomId}.
    * Empty/missing until an admin adds rooms; session create is blocked when empty.
    */
   rooms?: ShowRoom[]
@@ -103,7 +163,7 @@ export interface ShowDoc {
    * Shared Onda Operator / Electron unlock password for this show (v1).
    * Auth email is derived as tech+{portalSlug}@onda.tech — see lib/tech/credentials.ts.
    * Prefer setting via Admin UI so the matching Auth user is provisioned.
-   * Validated server-side via Admin SDK — never returned to clients after unlock.
+   * Validated server-side via Admin SDK — never returned to attendee Route Handlers.
    */
   techCredential?: string
   /**
@@ -123,7 +183,7 @@ export interface ShowDoc {
   createdBy: string
 }
 
-/** Show-scoped physical room (Admin-managed; Operator read-only). */
+/** Denormalized room entry on ShowDoc.rooms[] (Operator unlock compatibility). */
 export interface ShowRoom {
   id: string
   name: string
@@ -151,7 +211,7 @@ export interface ApprovalState {
 
 export interface SessionDoc {
   title: string
-  /** References ShowDoc.rooms[].id — required; free-text location removed. */
+  /** References shows/{showId}/rooms/{roomId} (and denormalized ShowDoc.rooms[].id). */
   roomId: string
   friendlyName: string      // branded e.g. "Main Stage"
   scheduledStart: Timestamp
@@ -170,6 +230,8 @@ export interface SessionDoc {
   aiSummaryTriggeredBy?: string
   publishedAt?: Timestamp
   outputLayoutTemplateId?: string
+  /** Public download URL for the session QR (PNG preferred when both exist). */
+  qrCodeUrl?: string
   /**
    * Recall recording id bound at start / written again on sdk_upload.complete.
    * Used with recordingIndex and server-side audio retrieve.

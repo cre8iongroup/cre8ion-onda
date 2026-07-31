@@ -1,10 +1,30 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
 import { loadPublicRoomById } from '@/lib/attendee/load'
 import { formatSessionTime, groupSessionsByDay } from '@/lib/attendee/schedule'
+import { attendeePageMetadata } from '@/lib/attendee/shareMeta'
 import { AttendeeFooter, AttendeeShell } from '../../AttendeeChrome'
 
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ roomId: string }>
+}): Promise<Metadata> {
+  const { roomId } = await params
+  const room = await loadPublicRoomById(roomId)
+  if (!room) {
+    return attendeePageMetadata({ title: 'Room', showBranding: null })
+  }
+  // Favicon is show-level only — use show.branding even if room overrides palette.
+  return attendeePageMetadata({
+    title: room.name,
+    description: `${room.show.name} · Room schedule and live sessions`,
+    showBranding: room.show.branding,
+  })
+}
 
 export default async function RoomPage({
   params,

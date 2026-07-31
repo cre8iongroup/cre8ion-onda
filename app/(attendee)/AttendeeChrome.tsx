@@ -15,6 +15,32 @@ export function brandingStyle(branding: EffectiveBranding): CSSProperties {
   }
 }
 
+/**
+ * Thin fixed edge strips for iOS 26+ Safari Liquid Glass toolbar tinting.
+ * Safari samples position:fixed/sticky backgrounds at the viewport edges
+ * (theme-color meta is ignored there). Color must be in rendered CSS at
+ * first paint — inline backgroundColor from SSR branding, not a JS effect.
+ * Heights track safe-area insets so these sit in the padded notch/home
+ * regions and do not fight content insets from PR #56.
+ */
+export function AttendeeSafariTint({ backgroundColor }: { backgroundColor: string }) {
+  const style = { backgroundColor }
+  return (
+    <>
+      <div
+        className="attendee-safari-tint attendee-safari-tint--top"
+        style={style}
+        aria-hidden
+      />
+      <div
+        className="attendee-safari-tint attendee-safari-tint--bottom"
+        style={style}
+        aria-hidden
+      />
+    </>
+  )
+}
+
 export function AttendeeShell({
   branding,
   children,
@@ -25,6 +51,7 @@ export function AttendeeShell({
   return (
     <div className="attendee-shell" style={brandingStyle(branding)}>
       <AttendeeThemeColor backgroundColor={branding.backgroundColor} />
+      <AttendeeSafariTint backgroundColor={branding.backgroundColor} />
       <div className="attendee-inner">{children}</div>
     </div>
   )

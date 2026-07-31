@@ -9,6 +9,7 @@ import { useAuthContext } from '@/context/AuthContext'
 import { renameRoomDualWrite } from '@/lib/rooms'
 import type { RoomDoc, ShowDoc, ShowRoom, WithId } from '@/types'
 import QrCodeCard from '@/app/admin/components/QrCodeCard'
+import { roomPublicUrl } from '@/lib/attendee/urls'
 
 export default function RoomEditClient({
   showId,
@@ -109,7 +110,17 @@ export default function RoomEditClient({
       <h1 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>
         {readOnlyQr ? 'Room QR' : 'Edit room'}
       </h1>
-      <p style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-8)' }}>{room.name}</p>
+      <p style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>{room.name}</p>
+      <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-8)' }}>
+        <a
+          href={roomPublicUrl(roomId)}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'inherit' }}
+        >
+          /room/{roomId}
+        </a>
+      </p>
 
       {flash && (
         <div className="alert alert-success" role="status" style={{ marginBottom: 'var(--space-6)' }}>

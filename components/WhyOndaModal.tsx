@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useId, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 export type WhyOndaModalProps = {
   open: boolean
@@ -10,6 +11,9 @@ export type WhyOndaModalProps = {
 /**
  * Shared “Why Onda?” brand story modal.
  * Usable from Admin, Operator, and later Attendee / Output surfaces.
+ *
+ * Portaled to document.body so position:fixed + z-index are not trapped by
+ * ancestor stacking contexts (e.g. .panel-sidebar { position: sticky }).
  */
 export function WhyOndaModal({ open, onClose }: WhyOndaModalProps) {
   const titleId = useId()
@@ -23,11 +27,12 @@ export function WhyOndaModal({ open, onClose }: WhyOndaModalProps) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, onClose])
 
-  if (!open) return null
+  // open is only set by user interaction, so document is always available here.
+  if (!open || typeof document === 'undefined') return null
 
-  return (
+  return createPortal(
     <div
-      className="modal-backdrop"
+      className="modal-backdrop why-onda-backdrop"
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
@@ -55,7 +60,7 @@ export function WhyOndaModal({ open, onClose }: WhyOndaModalProps) {
 
         <div className="why-onda-body">
           <p>
-            In Spanish, <strong>onda</strong> means wave.
+            In Spanish, <em>onda</em> means wave.
           </p>
           <p>
             Not the kind that crashes and recedes — the kind that travels. Sound moves in waves.
@@ -74,11 +79,12 @@ export function WhyOndaModal({ open, onClose }: WhyOndaModalProps) {
             a vast and unexplored ocean.
           </p>
           <p>
-            <strong>Buena onda</strong>
+            <em>Buena onda</em>
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

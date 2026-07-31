@@ -12,6 +12,7 @@ import {
 } from 'firebase/database'
 import { getClientDatabase } from '@/lib/firebase/client'
 import { formatSessionDateTime } from '@/lib/attendee/schedule'
+import { buildCaptionDisplayLines } from '@/lib/attendee/captionLines'
 import type { EffectiveBranding, FeedState, RTDBChunk, WithId } from '@/types'
 import { AttendeeFooter, brandingStyle } from '../../AttendeeChrome'
 
@@ -120,6 +121,9 @@ export default function LiveCaptionFeed({
     return () => unsubAdded()
   }, [sessionId, feedState])
 
+  // Match Operator: coalesce partials into one in-progress line + finalized lines.
+  const displayLines = buildCaptionDisplayLines(chunks)
+
   useLayoutEffect(() => {
     if (feedState !== 'live') return
     const el = feedRef.current
@@ -200,17 +204,19 @@ export default function LiveCaptionFeed({
 
           {isLive ? (
             <div ref={feedRef} className="caption-feed">
-              {chunks.length === 0 ? (
+              {displayLines.length === 0 ? (
                 <p className="caption-empty">Listening for captions…</p>
               ) : (
-                chunks.map((c, i) => {
-                  const isLatest = i === chunks.length - 1
+                displayLines.map((line, i) => {
+                  const isLatest = i === displayLines.length - 1
                   return (
                     <p
-                      key={c.id}
-                      className={`caption-line${isLatest ? ' is-latest' : ' is-prior'}`}
+                      key={line.id}
+                      className={`caption-line${isLatest ? ' is-latest' : ' is-prior'}${
+                        line.finalized ? '' : ' is-partial'
+                      }`}
                     >
-                      {c.text}
+                      {line.text}
                     </p>
                   )
                 })

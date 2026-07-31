@@ -1,0 +1,40 @@
+name: Next.js build
+
+on:
+  pull_request:
+    branches:
+      - main
+      - development
+
+jobs:
+  build:
+    name: next build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          # Public Firebase client config is inlined at build time; placeholders
+          # are enough for compile/bundle. Real values are not required to catch
+          # bundler failures (e.g. unresolved CSS imports).
+          NEXT_PUBLIC_FIREBASE_API_KEY: build-check-placeholder
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: placeholder.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: cre8ion-onda
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: cre8ion-onda.appspot.com
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '0'
+          NEXT_PUBLIC_FIREBASE_APP_ID: '1:0:web:0'
+          NEXT_PUBLIC_FIREBASE_DATABASE_URL: https://cre8ion-onda-default-rtdb.firebaseio.com
+          NEXT_PUBLIC_APP_URL: http://localhost:3000

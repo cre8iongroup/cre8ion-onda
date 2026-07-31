@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { FieldValue } from 'firebase-admin/firestore'
 import {
   AdminAuthError,
   requireAdminUser,
+  requireQrDownloadCapability,
+  requireQrGenerateCapability,
 } from '@/lib/admin/requireAdminUser'
 import { getAdminFirestore } from '@/lib/firebase/admin'
 import {
-  generateQrBuffer,
+  persistQrPair,
   qrStoragePath,
   qrTargetUrl,
-  uploadQrToStorage,
+  readQrFromStorage,
+  type QrAction,
   type QrFormat,
   type QrTargetType,
 } from '@/lib/qr'
-import type { SessionDoc, ShowDoc } from '@/types'
 
 export const runtime = 'nodejs'
 
@@ -22,48 +23,54 @@ function parseBody(raw: unknown): {
   showId: string
   id: string
   format: QrFormat
+  action: QrAction
 } | null {
   if (!raw || typeof raw !== 'object') return null
   const b = raw as Record<string, unknown>
   const type = b.type === 'room' || b.type === 'session' ? b.type : null
   const showId = typeof b.showId === 'string' ? b.showId.trim() : ''
   const id = typeof b.id === 'string' ? b.id.trim() : ''
-  const format = b.format === 'svg' ? 'svg' : b.format === 'png' ? 'png' : null
-  if (!type || !showId || !id || !format) return null
-  return { type, showId, id, format }
+  const format = b.format === 'svg' ? 'svg' : b.format === 'png' ? 'png' : 'png'
+  const action: QrAction =
+    b.action === 'regenerate' || b.action === 'generate' || b.action === 'download'
+      ? b.action
+      : 'download'
+  if (!type || !showId || !id) return null
+  return { type, showId, id, format, action }
+}
+
+function assertAssigned(
+  userDoc: { baseRole: string; assignedShows?: string[] },
+  showId: string,
+) {
+  const assigned = userDoc.assignedShows ?? []
+  if (userDoc.baseRole !== 'admin' && assigned.length > 0 && !assigned.includes(showId)) {
+    throw new AdminAuthError(403, 'forbidden', 'Not assigned to this show')
+  }
 }
 
 /**
  * POST /api/admin/qr
- * Body: { type: 'room'|'session', showId, id, format: 'png'|'svg' }
+ * Body: { type, showId, id, format?: 'png'|'svg', action: 'generate'|'regenerate'|'download' }
  *
- * Requires canDownloadQr. Persists to Storage and updates qrCodeUrl (PNG preferred).
- * Contributors may download; only admin/editor may mutate docs — Contributors
- * get a generated file without requiring write if doc update is denied…
- * Actually: Contributors need the file. We update qrCodeUrl only when caller
- * canEditShows; Contributors still receive the generated asset in the response.
+ * Shared by QR codes tab + Session/Room edit — one generation path.
+ * - generate / regenerate → requires canEditShows (never canDownloadQr alone)
+ * - download → requires canDownloadQr; never creates a new code
+ * - generate reuses existing qrCodeUrl; only regenerate overwrites Storage + field
  */
 export async function POST(request: NextRequest) {
   try {
     const { userDoc, capabilities } = await requireAdminUser(request)
-    if (!capabilities.canDownloadQr) {
-      return NextResponse.json({ error: 'Missing canDownloadQr' }, { status: 403 })
-    }
-
     const parsed = parseBody(await request.json().catch(() => null))
     if (!parsed) {
       return NextResponse.json(
-        { error: 'Expected { type, showId, id, format }' },
+        { error: 'Expected { type, showId, id, action, format? }' },
         { status: 400 },
       )
     }
 
-    const { type, showId, id, format } = parsed
-    const assigned = userDoc.assignedShows ?? []
-    const isAdmin = userDoc.baseRole === 'admin'
-    if (!isAdmin && assigned.length > 0 && !assigned.includes(showId)) {
-      return NextResponse.json({ error: 'Not assigned to this show' }, { status: 403 })
-    }
+    const { type, showId, id, format, action } = parsed
+    assertAssigned(userDoc, showId)
 
     const fs = getAdminFirestore()
     const showSnap = await fs.doc(`shows/${showId}`).get()
@@ -71,47 +78,105 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Show not found' }, { status: 404 })
     }
 
-    if (type === 'room') {
-      const roomSnap = await fs.doc(`shows/${showId}/rooms/${id}`).get()
-      if (!roomSnap.exists) {
-        return NextResponse.json({ error: 'Room not found' }, { status: 404 })
-      }
-    } else {
-      const sessSnap = await fs.doc(`shows/${showId}/sessions/${id}`).get()
-      if (!sessSnap.exists) {
-        return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-      }
-      void (sessSnap.data() as SessionDoc)
+    const docRef =
+      type === 'room'
+        ? fs.doc(`shows/${showId}/rooms/${id}`)
+        : fs.doc(`shows/${showId}/sessions/${id}`)
+    const entitySnap = await docRef.get()
+    if (!entitySnap.exists) {
+      return NextResponse.json(
+        { error: type === 'room' ? 'Room not found' : 'Session not found' },
+        { status: 404 },
+      )
     }
 
-    void (showSnap.data() as ShowDoc)
+    const existingUrl =
+      typeof entitySnap.data()?.qrCodeUrl === 'string'
+        ? (entitySnap.data()!.qrCodeUrl as string)
+        : ''
 
-    const targetUrl = qrTargetUrl(type, id)
-    const { buffer, contentType } = await generateQrBuffer(targetUrl, format)
-    const storagePath = qrStoragePath(showId, type, id, format)
-    const downloadUrl = await uploadQrToStorage(storagePath, buffer, contentType)
+    if (action === 'generate' || action === 'regenerate') {
+      requireQrGenerateCapability(capabilities)
 
-    // Persist qrCodeUrl when caller can edit (admin/editor). PNG is canonical.
-    if (capabilities.canEditShows || capabilities.canCreateShows) {
-      if (format === 'png') {
-        const ref =
-          type === 'room'
-            ? fs.doc(`shows/${showId}/rooms/${id}`)
-            : fs.doc(`shows/${showId}/sessions/${id}`)
-        await ref.update({
-          qrCodeUrl: downloadUrl,
-          qrUpdatedAt: FieldValue.serverTimestamp(),
-        })
+      if (action === 'generate' && existingUrl) {
+        // Reuse — do not silently regenerate
+        const stored = await readQrFromStorage(qrStoragePath(showId, type, id, format))
+        if (stored) {
+          return new NextResponse(new Uint8Array(stored.buffer), {
+            status: 200,
+            headers: {
+              'Content-Type': stored.contentType,
+              'Content-Disposition': `inline; filename="${type}-${id}.qr.${format}"`,
+              'X-Onda-Qr-Target': qrTargetUrl(type, id),
+              'X-Onda-Qr-Url': existingUrl,
+              'X-Onda-Qr-Reused': '1',
+              'Cache-Control': 'no-store',
+            },
+          })
+        }
+        // PNG URL exists but storage object missing — fall through to persist
       }
+
+      const { pngUrl, targetUrl } = await persistQrPair(showId, type, id)
+      const stored = await readQrFromStorage(qrStoragePath(showId, type, id, format))
+      if (!stored) {
+        return NextResponse.json({ error: 'QR persisted but read-back failed' }, { status: 500 })
+      }
+
+      return new NextResponse(new Uint8Array(stored.buffer), {
+        status: 200,
+        headers: {
+          'Content-Type': stored.contentType,
+          'Content-Disposition': `inline; filename="${type}-${id}.qr.${format}"`,
+          'X-Onda-Qr-Target': targetUrl,
+          'X-Onda-Qr-Url': pngUrl,
+          'X-Onda-Qr-Reused': '0',
+          'Cache-Control': 'no-store',
+        },
+      })
     }
 
-    return new NextResponse(new Uint8Array(buffer), {
+    // download — never generate
+    requireQrDownloadCapability(capabilities)
+    if (!existingUrl) {
+      return NextResponse.json(
+        { error: 'Not yet generated', code: 'not_generated' },
+        { status: 404 },
+      )
+    }
+
+    const stored = await readQrFromStorage(qrStoragePath(showId, type, id, format))
+    if (!stored) {
+      // Fallback: if PNG URL exists but SVG object missing, or vice versa —
+      // regenerate that format from the same target URL without changing qrCodeUrl identity.
+      // Still same payload URL so codes stay equivalent.
+      const { generateQrBuffer, uploadQrToStorage } = await import('@/lib/qr')
+      const targetUrl = qrTargetUrl(type, id)
+      const fresh = await generateQrBuffer(targetUrl, format)
+      await uploadQrToStorage(
+        qrStoragePath(showId, type, id, format),
+        fresh.buffer,
+        fresh.contentType,
+      )
+      return new NextResponse(new Uint8Array(fresh.buffer), {
+        status: 200,
+        headers: {
+          'Content-Type': fresh.contentType,
+          'Content-Disposition': `attachment; filename="${type}-${id}.qr.${format}"`,
+          'X-Onda-Qr-Target': targetUrl,
+          'X-Onda-Qr-Url': existingUrl,
+          'Cache-Control': 'no-store',
+        },
+      })
+    }
+
+    return new NextResponse(new Uint8Array(stored.buffer), {
       status: 200,
       headers: {
-        'Content-Type': contentType,
+        'Content-Type': stored.contentType,
         'Content-Disposition': `attachment; filename="${type}-${id}.qr.${format}"`,
-        'X-Onda-Qr-Target': targetUrl,
-        'X-Onda-Qr-Url': downloadUrl,
+        'X-Onda-Qr-Target': qrTargetUrl(type, id),
+        'X-Onda-Qr-Url': existingUrl,
         'Cache-Control': 'no-store',
       },
     })

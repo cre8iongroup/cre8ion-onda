@@ -64,7 +64,12 @@ service cloud.firestore {
     match /shows/{showId} {
       allow read: if canReadShow(showId);
       allow create: if isAdminOrEditor();
-      allow update: if isAdminOrEditor() && isAssignedToShow(showId);
+      // Tech-managed fields (credential + Operator settings) may not be changed
+      // via client SDK — only Admin SDK after canManageTech check on the API.
+      allow update: if isAdminOrEditor()
+        && isAssignedToShow(showId)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['techCredential', 'operatorInstructions', 'transcriptionStyle']);
       allow delete: if isAdmin();
 
       // Rooms subcollection (Phase 5) — Contributor read-only for QR UI

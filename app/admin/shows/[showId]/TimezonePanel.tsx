@@ -19,39 +19,32 @@ const COMMON_TIMEZONES = [
   'UTC',
 ]
 
-export default function PublishTimezonePanel({
+export default function TimezonePanel({
   showId,
-  portalPublished,
   showTimezone,
   canEdit,
   onFlash,
 }: {
   showId: string
-  portalPublished: boolean
   showTimezone: string | undefined
   canEdit: boolean
   onFlash: (message: string) => void
 }) {
   const [tz, setTz] = useState(showTimezone || DEFAULT_SHOW_TIMEZONE)
-  const [published, setPublished] = useState(portalPublished)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setTz(showTimezone || DEFAULT_SHOW_TIMEZONE)
-    setPublished(portalPublished)
-  }, [showTimezone, portalPublished])
+  }, [showTimezone])
 
   async function save() {
     if (!canEdit) return
     setBusy(true)
     setError(null)
     try {
-      await updateDoc(doc(getClientFirestore(), 'shows', showId), {
-        portalPublished: published,
-        showTimezone: tz,
-      })
-      onFlash(published ? 'Show published to public routes.' : 'Show unpublished from public routes.')
+      await updateDoc(doc(getClientFirestore(), 'shows', showId), { showTimezone: tz })
+      onFlash('Timezone saved.')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save.')
     } finally {
@@ -66,18 +59,6 @@ export default function PublishTimezonePanel({
           {error}
         </div>
       )}
-      <label className="checkbox-row" style={{ marginBottom: 'var(--space-4)' }}>
-        <input
-          type="checkbox"
-          checked={published}
-          disabled={!canEdit || busy}
-          onChange={(e) => setPublished(e.target.checked)}
-        />
-        <span>
-          Published to public routes (<code>/show/…</code>). Required before attendee pages resolve.
-        </span>
-      </label>
-
       <div className="field" style={{ marginBottom: 'var(--space-4)' }}>
         <label className="label" htmlFor="show-timezone">
           Event timezone
@@ -97,13 +78,12 @@ export default function PublishTimezonePanel({
           {tz && !COMMON_TIMEZONES.includes(tz) ? <option value={tz}>{tz}</option> : null}
         </select>
         <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
-          Used for attendee schedule day headers (IANA).
+          Used for attendee schedule day headers (IANA). Independent of publish state.
         </p>
       </div>
-
       {canEdit ? (
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void save()}>
-          {busy ? 'Saving…' : 'Save publish & timezone'}
+          {busy ? 'Saving…' : 'Save timezone'}
         </button>
       ) : null}
     </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { doc, updateDoc } from 'firebase/firestore'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { getClientFirestore, getClientStorage } from '@/lib/firebase/client'
@@ -12,6 +12,96 @@ import {
   syncAccentFields,
 } from '@/lib/branding'
 import type { ShowBranding } from '@/types'
+
+function normalizeHex(raw: string): string | null {
+  const v = raw.trim()
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v.toLowerCase()
+  if (/^[0-9a-fA-F]{6}$/.test(v)) return `#${v.toLowerCase()}`
+  return null
+}
+
+function ColorField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string
+  value: string
+  disabled?: boolean
+  onChange: (hex: string) => void
+}) {
+  const id = useId()
+  const [text, setText] = useState(value)
+
+  useEffect(() => {
+    setText(value)
+  }, [value])
+
+  return (
+    <div className="field">
+      <label className="label" htmlFor={`${id}-hex`}>
+        {label}
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <label
+          htmlFor={`${id}-swatch`}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            overflow: 'hidden',
+            border: '1px solid var(--color-border)',
+            flexShrink: 0,
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            display: 'block',
+            background: value,
+          }}
+          title={label}
+        >
+          <input
+            id={`${id}-swatch`}
+            type="color"
+            value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : '#000000'}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.value)}
+            style={{
+              opacity: 0,
+              width: '100%',
+              height: '100%',
+              border: 'none',
+              padding: 0,
+              cursor: 'inherit',
+            }}
+          />
+        </label>
+        <input
+          id={`${id}-hex`}
+          className="input"
+          value={text}
+          disabled={disabled}
+          spellCheck={false}
+          style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', maxWidth: 120 }}
+          onChange={(e) => {
+            const next = e.target.value
+            setText(next)
+            const hex = normalizeHex(next)
+            if (hex) onChange(hex)
+          }}
+          onBlur={() => {
+            const hex = normalizeHex(text)
+            if (hex) {
+              setText(hex)
+              onChange(hex)
+            } else {
+              setText(value)
+            }
+          }}
+        />
+      </div>
+    </div>
+  )
+}
 
 export default function BrandingPanel({
   showId,
@@ -87,54 +177,7 @@ export default function BrandingPanel({
         </div>
       )}
 
-      <div className="field-row" style={{ flexWrap: 'wrap' }}>
-        <div className="field">
-          <label className="label" htmlFor="brand-bg">Background</label>
-          <input
-            id="brand-bg"
-            type="color"
-            className="input"
-            value={backgroundColor}
-            disabled={!canEdit || busy}
-            onChange={(e) => setBackgroundColor(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label className="label" htmlFor="brand-text">Text</label>
-          <input
-            id="brand-text"
-            type="color"
-            className="input"
-            value={textColor}
-            disabled={!canEdit || busy}
-            onChange={(e) => setTextColor(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label className="label" htmlFor="brand-primary">Accent 1</label>
-          <input
-            id="brand-primary"
-            type="color"
-            className="input"
-            value={primaryColor}
-            disabled={!canEdit || busy}
-            onChange={(e) => setPrimaryColor(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label className="label" htmlFor="brand-secondary">Accent 2</label>
-          <input
-            id="brand-secondary"
-            type="color"
-            className="input"
-            value={secondaryColor}
-            disabled={!canEdit || busy}
-            onChange={(e) => setSecondaryColor(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="field" style={{ marginTop: 'var(--space-4)' }}>
+      <div className="field" style={{ marginBottom: 'var(--space-5)' }}>
         <label className="label">Logo</label>
         {logoURL ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -164,12 +207,75 @@ export default function BrandingPanel({
         />
       </div>
 
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+          gap: 'var(--space-4)',
+          marginBottom: 'var(--space-5)',
+        }}
+      >
+        <ColorField
+          label="Background"
+          value={backgroundColor}
+          disabled={!canEdit || busy}
+          onChange={setBackgroundColor}
+        />
+        <ColorField
+          label="Text"
+          value={textColor}
+          disabled={!canEdit || busy}
+          onChange={setTextColor}
+        />
+        <ColorField
+          label="Accent 1"
+          value={primaryColor}
+          disabled={!canEdit || busy}
+          onChange={setPrimaryColor}
+        />
+        <ColorField
+          label="Accent 2"
+          value={secondaryColor}
+          disabled={!canEdit || busy}
+          onChange={setSecondaryColor}
+        />
+      </div>
+
+      <div
+        aria-label="Branding preview"
+        style={{
+          marginBottom: 'var(--space-5)',
+          padding: 'var(--space-5)',
+          borderRadius: 12,
+          background: backgroundColor,
+          color: textColor,
+          border: '1px solid var(--color-border)',
+        }}
+      >
+        <div style={{ fontWeight: 700, fontSize: '1.125rem', marginBottom: 8 }}>Preview</div>
+        <p style={{ margin: '0 0 12px', opacity: 0.9 }}>
+          Sample body text on your background with the chosen text color.
+        </p>
+        <span
+          style={{
+            display: 'inline-block',
+            padding: '4px 10px',
+            borderRadius: 999,
+            background: primaryColor,
+            color: backgroundColor,
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          Accent badge
+        </span>
+      </div>
+
       {canEdit ? (
         <button
           type="button"
           id="btn-save-branding"
           className="btn btn-primary"
-          style={{ marginTop: 'var(--space-4)' }}
           disabled={busy}
           onClick={() => void save()}
         >

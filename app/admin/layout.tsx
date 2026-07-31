@@ -27,7 +27,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       !capabilities?.canCreateShows &&
       !capabilities?.canManageUsers &&
       !capabilities?.canEditShows &&
-      !capabilities?.canDownloadQr
+      !capabilities?.canDownloadQr &&
+      !capabilities?.canManageTech &&
+      !capabilities?.canManageBranding
     ) {
       router.replace('/login?error=unauthorized')
     }

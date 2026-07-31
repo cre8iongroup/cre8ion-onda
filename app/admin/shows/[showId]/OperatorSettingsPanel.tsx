@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { doc, updateDoc } from 'firebase/firestore'
-import { getClientFirestore } from '@/lib/firebase/client'
+import { useAuthContext } from '@/context/AuthContext'
 import type { TranscriptionStyle } from '@/types'
 
 const STYLE_OPTIONS: Array<{
@@ -15,12 +14,12 @@ const STYLE_OPTIONS: Array<{
     value: 'standard',
     label: 'Standard',
     recommended: true,
-    help: 'Numbers, dates, and dollar amounts are converted to written form (e.g. \'$150\', \'June 5\'). Best for most shows.',
+    help: "Numbers, dates, and dollar amounts are converted to written form (e.g. '$150', 'June 5'). Best for most shows.",
   },
   {
     value: 'lightweight',
     label: 'Lightweight',
-    help: 'Numbers and dates stay as spoken words. A lighter option — worth trying if captions feel like they\'re lagging on a slow connection.',
+    help: "Numbers and dates stay as spoken words. A lighter option — worth trying if captions feel like they're lagging on a slow connection.",
   },
 ]
 
@@ -41,10 +40,10 @@ export default function OperatorSettingsPanel({
   canEdit: boolean
   onFlash: (message: string) => void
 }) {
+  const { user } = useAuthContext()
   const serverStyle = normalizeStyle(transcriptionStyle)
   const serverInstructions = operatorInstructions ?? ''
 
-  // Local drafts override server props until save (or discard via null).
   const [draftStyle, setDraftStyle] = useState<TranscriptionStyle | null>(null)
   const [draftInstructions, setDraftInstructions] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -54,15 +53,25 @@ export default function OperatorSettingsPanel({
   const instructions = draftInstructions ?? serverInstructions
 
   async function save() {
-    if (!canEdit) return
+    if (!canEdit || !user) return
     setBusy(true)
     setError(null)
     try {
-      const trimmed = instructions.trim()
-      await updateDoc(doc(getClientFirestore(), 'shows', showId), {
-        transcriptionStyle: style,
-        operatorInstructions: trimmed,
+      const token = await user.getIdToken()
+      const res = await fetch('/api/admin/shows/tech-settings', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          showId,
+          transcriptionStyle: style,
+          operatorInstructions: instructions.trim(),
+        }),
       })
+      const json = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) throw new Error(json.error || `Save failed (${res.status})`)
       setDraftStyle(null)
       setDraftInstructions(null)
       onFlash('Operator settings saved.')

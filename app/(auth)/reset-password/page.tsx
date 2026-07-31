@@ -28,7 +28,7 @@ export default function ResetPasswordPage() {
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        <div className="auth-logo">〜 Onda</div>
+        <div className="auth-logo">〜 cre8ion Onda</div>
         <p className="auth-tagline">Reset your password</p>
 
         {sent ? (

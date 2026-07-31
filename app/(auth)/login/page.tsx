@@ -50,7 +50,7 @@ function LoginForm() {
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        <div className="auth-logo">〜 Onda</div>
+        <div className="auth-logo">〜 cre8ion Onda</div>
         <p className="auth-tagline">cre8ion Live Translation Platform</p>
 
         <form onSubmit={handleSubmit} className="form-group" noValidate>

@@ -42,7 +42,7 @@ export default function DownloadSuccessClient() {
     <div className="dl-shell">
       <header className="dl-topbar">
         <Link href="/docs/getting-started" className="dl-brand">
-          Onda
+          cre8ion Onda
         </Link>
         <nav className="dl-top-links" aria-label="Site">
           <Link href="/download">Download</Link>

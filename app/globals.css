@@ -18,6 +18,8 @@
   --color-secondary:        #00d4aa;
   --color-secondary-light:  #00efbe;
   --color-secondary-dark:   #00a882;
+  /* Logo / wordmark fill — also used as Why Onda? hero background */
+  --gradient-brand-mark:    linear-gradient(135deg, var(--color-primary-light), var(--color-secondary));
 
   /* Surfaces */
   --color-bg:               #0a0a0f;
@@ -422,7 +424,7 @@ code {
 .sidebar-logo-mark {
   font-size: var(--text-xl);
   font-weight: 800;
-  background: linear-gradient(135deg, var(--color-primary-light), var(--color-secondary));
+  background: var(--gradient-brand-mark);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -580,6 +582,97 @@ tbody tr:hover td {
   justify-content: flex-end;
   gap: var(--space-3);
   margin-top: var(--space-2);
+}
+
+/* ─────────────────────────────────────────────────
+   Why Onda? modal
+   ───────────────────────────────────────────────── */
+.why-onda-panel {
+  width: min(480px, 100%);
+  max-height: min(90dvh, 720px);
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.why-onda-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 148px;
+  padding: var(--space-10) var(--space-8);
+  background: var(--gradient-brand-mark);
+  flex-shrink: 0;
+}
+
+.why-onda-hero-word {
+  margin: 0;
+  font-size: var(--text-4xl);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--color-text-inverse);
+  line-height: 1;
+}
+
+.why-onda-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  color: var(--color-text-inverse) !important;
+  opacity: 0.85;
+}
+
+.why-onda-close:hover {
+  opacity: 1;
+  background: rgba(10, 10, 15, 0.12) !important;
+}
+
+.why-onda-body {
+  padding: var(--space-6);
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.why-onda-body p {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.65;
+  color: var(--color-text-secondary);
+}
+
+.why-onda-body p:last-child {
+  margin-bottom: 0;
+}
+
+.why-onda-body strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.why-onda-link {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.why-onda-link:hover {
+  color: var(--color-text-secondary);
+}
+
+.sidebar-footer-link {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
 }
 
 .field-row {
@@ -790,7 +883,7 @@ a.show-list-item:focus-visible {
 .auth-logo {
   font-size: var(--text-2xl);
   font-weight: 800;
-  background: linear-gradient(135deg, var(--color-primary-light), var(--color-secondary));
+  background: var(--gradient-brand-mark);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

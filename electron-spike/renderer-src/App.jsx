@@ -14,6 +14,7 @@ import { createInputMeterTap } from './lib/inputMeterTap.js'
 import { getFirebaseConfigStatus, getRendererDatabase } from './lib/firebaseClient.js'
 import { buildCaptionDisplayLines } from './lib/captionLines.js'
 import { networkHealthColor } from './lib/networkHealth.js'
+import { WhyOndaLink } from '../../components/WhyOndaModal.tsx'
 
 /** Safe subset for Operator Instructions — no images, tables, code, HTML, etc. */
 const OPERATOR_MD_ALLOWED = [
@@ -624,7 +625,7 @@ export default function App() {
             <span className="op-brand-mark" aria-hidden="true">
               〜
             </span>
-            <span className="op-brand-name">Onda Operator</span>
+            <span className="op-brand-name">cre8ion Onda Operator</span>
           </div>
           {show ? (
             <div className="op-header-show text-sm text-muted truncate">
@@ -650,7 +651,7 @@ export default function App() {
               <div className="op-brand-mark-lg" aria-hidden="true">
                 〜
               </div>
-              <h1 className="op-welcome-title">Onda Operator</h1>
+              <h1 className="op-welcome-title">cre8ion Onda Operator</h1>
               <p className="op-welcome-sub">
                 Unlock a show with its shared tech credential to start capturing.
               </p>
@@ -953,6 +954,10 @@ export default function App() {
           </div>
         </aside>
       ) : null}
+
+      <footer className="op-footer">
+        <WhyOndaLink id="btn-op-why-onda" />
+      </footer>
     </div>
   )
 }

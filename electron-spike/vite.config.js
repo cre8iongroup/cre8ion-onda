@@ -64,6 +64,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
+      fs: {
+        // Shared WhyOndaModal lives at repo-root /components
+        allow: [path.resolve(__dirname, '..')],
+      },
     },
   }
 })

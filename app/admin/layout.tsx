@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuthContext } from '@/context/AuthContext'
+import { WhyOndaLink } from '@/components/WhyOndaModal'
 
 const ADMIN_NAV = [
   { href: '/admin',               label: 'Shows',        icon: '🎬' },
@@ -40,7 +41,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Sidebar */}
       <aside className="panel-sidebar" aria-label="Admin navigation">
         <div className="sidebar-logo">
-          <div className="sidebar-logo-mark">〜 Onda</div>
+          <div className="sidebar-logo-mark">〜 cre8ion Onda</div>
           <div className="sidebar-logo-sub">Admin Panel</div>
         </div>
 
@@ -75,6 +76,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           >
             Sign out
           </button>
+          <div className="sidebar-footer-link">
+            <WhyOndaLink id="btn-admin-why-onda" />
+          </div>
         </div>
       </aside>
 

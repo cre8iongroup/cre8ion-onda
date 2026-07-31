@@ -17,6 +17,14 @@
       ]
     },
     {
+      "collectionGroup": "sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "roomId", "order": "ASCENDING" },
+        { "fieldPath": "scheduledStart", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "transcripts",
       "queryScope": "COLLECTION",
       "fields": [

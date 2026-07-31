@@ -15,7 +15,7 @@ import {
 import { BASE_ROLE_CAPS } from '@/lib/permissions/roles'
 import type { BaseRole, Capabilities, CustomPermissions, ShowDoc, UserDoc, WithId } from '@/types'
 
-const ROLES: BaseRole[] = ['admin', 'editor', 'tech', 'reviewer']
+const ROLES: BaseRole[] = ['admin', 'editor', 'contributor', 'tech', 'reviewer']
 
 const CAPABILITY_OPTIONS: Array<{ key: keyof Capabilities; label: string }> = [
   { key: 'canCreateShows', label: 'Create shows' },
@@ -29,12 +29,13 @@ const CAPABILITY_OPTIONS: Array<{ key: keyof Capabilities; label: string }> = [
   { key: 'canExportTranscripts', label: 'Export transcripts' },
   { key: 'canManageBranding', label: 'Manage branding' },
   { key: 'canManageOutputLayouts', label: 'Manage output layouts' },
+  { key: 'canDownloadQr', label: 'Download QR codes' },
 ]
 
 const createUserSchema = z.object({
   email: z.string().trim().email('Valid email is required'),
   displayName: z.string().trim().min(2, 'Display name is required'),
-  baseRole: z.enum(['admin', 'editor', 'tech', 'reviewer']),
+  baseRole: z.enum(['admin', 'editor', 'contributor', 'tech', 'reviewer']),
 })
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>

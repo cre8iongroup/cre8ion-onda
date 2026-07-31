@@ -4,12 +4,12 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { addDoc, collection, doc, Timestamp, updateDoc } from 'firebase/firestore'
+import { addDoc, collection, Timestamp } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
 import type { SessionDoc, ShowRoom } from '@/types'
 import {
+  createRoomDualWrite,
   findRoomNameConflict,
-  newRoomId,
   normalizeRoomName,
   sortRoomsByName,
 } from '@/lib/rooms'
@@ -118,15 +118,19 @@ export default function CreateSessionModal({
       setError('roomId', { message: 'A room with that name already exists.' })
       return null
     }
-    const room: ShowRoom = { id: newRoomId(), name: trimmed }
-    const next = [...rooms, room]
     setCreatingRoom(true)
     try {
-      await updateDoc(doc(getClientFirestore(), 'shows', showId), { rooms: next })
-      setValue('roomId', room.id, { shouldValidate: true })
+      const entry = await createRoomDualWrite(
+        getClientFirestore(),
+        showId,
+        rooms,
+        trimmed,
+        createdBy,
+      )
+      setValue('roomId', entry.id, { shouldValidate: true })
       setInlineRoomName('')
       clearErrors('roomId')
-      return room.id
+      return entry.id
     } catch (err: any) {
       console.error('CreateSessionModal: failed to create room', err)
       setError('roomId', { message: err?.message || 'Failed to create room.' })

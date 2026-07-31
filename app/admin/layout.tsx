@@ -7,9 +7,9 @@ import { useAuthContext } from '@/context/AuthContext'
 import { WhyOndaLink } from '@/components/WhyOndaModal'
 
 const ADMIN_NAV = [
-  { href: '/admin',               label: 'Shows',        icon: '🎬' },
-  { href: '/admin/users',         label: 'Users',        icon: '👥' },
-  { href: '/admin/layouts',       label: 'Layouts',      icon: '🖥️' },
+  { href: '/admin',               label: 'Shows',        icon: '🎬', show: () => true },
+  { href: '/admin/users',         label: 'Users',        icon: '👥', show: (c: { canManageUsers?: boolean }) => Boolean(c.canManageUsers) },
+  { href: '/admin/layouts',       label: 'Layouts',      icon: '🖥️', show: (c: { canManageOutputLayouts?: boolean }) => Boolean(c.canManageOutputLayouts) },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -22,8 +22,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       router.replace('/login?from=/admin')
       return
     }
-    // Must have at least one admin/editor capability
-    if (!capabilities?.canCreateShows && !capabilities?.canManageUsers) {
+    // Must have at least one staff capability (editors/admins or QR-only contributors)
+    if (
+      !capabilities?.canCreateShows &&
+      !capabilities?.canManageUsers &&
+      !capabilities?.canEditShows &&
+      !capabilities?.canDownloadQr
+    ) {
       router.replace('/login?error=unauthorized')
     }
   }, [user, capabilities, loading, router])
@@ -46,7 +51,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <nav>
-          {ADMIN_NAV.map(({ href, label, icon }) => (
+          {ADMIN_NAV.filter((item) => item.show(capabilities || {})).map(({ href, label, icon }) => (
             <Link key={href} href={href} className="nav-item">
               <span>{icon}</span>
               <span>{label}</span>

@@ -26,12 +26,17 @@ service cloud.firestore {
       return isSignedIn() && getRole() in ['admin', 'editor'];
     }
 
+    function isContributor() {
+      return isSignedIn() && getRole() == 'contributor';
+    }
+
     function isAssignedToShow(showId) {
       let userData = getUserData();
-      // Admin always has access; other roles check assignedShows
+      // Admin always has access. Empty assignedShows = all shows for staff roles,
+      // but Contributors must be explicitly assigned (never implied all-access).
       return getRole() == 'admin'
         || showId in userData.assignedShows
-        || userData.assignedShows.size() == 0; // empty = all shows (admin only)
+        || (userData.assignedShows.size() == 0 && getRole() != 'contributor');
     }
 
     function isTech() {
@@ -42,21 +47,39 @@ service cloud.firestore {
       return isSignedIn() && getRole() == 'reviewer';
     }
 
+    // Contributor: read assigned shows for QR download UI; never write.
+    function canReadShow(showId) {
+      return isSignedIn() && isAssignedToShow(showId) && (
+        isAdminOrEditor()
+        || isTech()
+        || isReviewer()
+        || isContributor()
+      );
+    }
+
     // ─────────────────────────────────────────────────────
     // Shows
     // ─────────────────────────────────────────────────────
 
     match /shows/{showId} {
-      allow read: if isSignedIn() && isAssignedToShow(showId);
+      allow read: if canReadShow(showId);
       allow create: if isAdminOrEditor();
       allow update: if isAdminOrEditor() && isAssignedToShow(showId);
       allow delete: if isAdmin();
 
+      // Rooms subcollection (Phase 5) — Contributor read-only for QR UI
+      match /rooms/{roomId} {
+        allow read: if canReadShow(showId);
+        allow create, update: if isAdminOrEditor() && isAssignedToShow(showId);
+        allow delete: if isAdminOrEditor() && isAssignedToShow(showId);
+      }
+
       // Sessions subcollection
       match /sessions/{sessionId} {
-        allow read: if isSignedIn() && isAssignedToShow(showId);
+        allow read: if canReadShow(showId);
         allow create: if isAdminOrEditor() && isAssignedToShow(showId);
         // Admins/editors: full update. Tech: feedState only (Go Live control).
+        // Contributor: no writes (QR download only).
         allow update: if isSignedIn() && isAssignedToShow(showId) && (
           isAdminOrEditor()
           || (
@@ -68,7 +91,7 @@ service cloud.firestore {
 
         // Transcript chunks — server-only writes
         match /transcripts/{chunkId} {
-          allow read: if isSignedIn() && isAssignedToShow(showId);
+          allow read: if isSignedIn() && isAssignedToShow(showId) && !isContributor();
           allow write: if false; // Cloud Functions (Admin SDK) only
         }
       }

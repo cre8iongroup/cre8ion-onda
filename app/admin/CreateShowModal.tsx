@@ -7,6 +7,14 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { addDoc, collection, Timestamp } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
 import { provisionTechAuthUser } from '@/lib/tech/provisionTechUser'
+import {
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_PRIMARY_COLOR,
+  DEFAULT_SECONDARY_COLOR,
+  DEFAULT_SHOW_TIMEZONE,
+  DEFAULT_TEXT_COLOR,
+  syncAccentFields,
+} from '@/lib/branding'
 import type { ShowDoc } from '@/types'
 
 const createShowSchema = z.object({
@@ -120,6 +128,11 @@ export default function CreateShowModal({
       const start = new Date(`${values.startDate}T00:00:00`)
       const end = new Date(`${values.endDate}T23:59:59`)
 
+      const accents = syncAccentFields({
+        primaryColor: DEFAULT_PRIMARY_COLOR,
+        secondaryColor: DEFAULT_SECONDARY_COLOR,
+      })
+
       const payload: ShowDoc = {
         name: values.name.trim(),
         clientName: values.clientName.trim(),
@@ -127,8 +140,11 @@ export default function CreateShowModal({
         endDate: Timestamp.fromDate(end),
         glossary: [],
         branding: {
-          primaryColor: '#5b3aee',
-          secondaryColor: '#00d4aa',
+          primaryColor: accents.primaryColor,
+          secondaryColor: accents.secondaryColor,
+          accentColors: accents.accentColors,
+          backgroundColor: DEFAULT_BACKGROUND_COLOR,
+          textColor: DEFAULT_TEXT_COLOR,
           logoURL: '',
           endSessionBehavior: 'message',
           endSessionMessage: 'Thank you for attending.',
@@ -136,6 +152,8 @@ export default function CreateShowModal({
         },
         defaultLanguages: ['en', 'es'],
         portalPublished: false,
+        showTimezone: DEFAULT_SHOW_TIMEZONE,
+        links: [],
         rooms: [],
         techCredential: values.techCredential.trim(),
         transcriptionStyle: 'standard',
@@ -279,7 +297,7 @@ export default function CreateShowModal({
               })}
             />
             <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              Used for <code>/portal/[slug]</code>
+              Used for <code>/show/[slug]</code> (legacy <code>/portal/[slug]</code> redirects there)
             </p>
             {errors.portalSlug && <p className="field-error">{errors.portalSlug.message}</p>}
           </div>

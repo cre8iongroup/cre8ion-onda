@@ -1,13 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { doc, updateDoc } from 'firebase/firestore'
+import Link from 'next/link'
 import { getClientFirestore } from '@/lib/firebase/client'
+import { useAuthContext } from '@/context/AuthContext'
 import type { ShowRoom, WithId } from '@/types'
 import {
+  createRoomDualWrite,
+  deleteRoomDualWrite,
   findRoomNameConflict,
-  newRoomId,
   normalizeRoomName,
+  renameRoomDualWrite,
   sortRoomsByName,
 } from '@/lib/rooms'
 
@@ -25,6 +28,8 @@ export default function RoomsPanel({
   canEdit: boolean
   onFlash: (message: string) => void
 }) {
+  const { user, capabilities } = useAuthContext()
+  const canOpenRoom = Boolean(capabilities?.canDownloadQr || canEdit)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -32,23 +37,6 @@ export default function RoomsPanel({
   const [editName, setEditName] = useState('')
 
   const sorted = sortRoomsByName(rooms)
-
-  async function persistRooms(next: ShowRoom[], successMessage: string) {
-    setBusy(true)
-    setError(null)
-    try {
-      await updateDoc(doc(getClientFirestore(), 'shows', showId), { rooms: next })
-      onFlash(successMessage)
-      setName('')
-      setEditingId(null)
-      setEditName('')
-    } catch (err: any) {
-      console.error('RoomsPanel:', err)
-      setError(err?.message || 'Failed to update rooms.')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   async function addRoom() {
     if (!canEdit || busy) return
@@ -61,8 +49,24 @@ export default function RoomsPanel({
       setError('A room with that name already exists.')
       return
     }
-    const next: ShowRoom[] = [...rooms, { id: newRoomId(), name: trimmed }]
-    await persistRooms(next, `Room “${trimmed}” added.`)
+    setBusy(true)
+    setError(null)
+    try {
+      await createRoomDualWrite(
+        getClientFirestore(),
+        showId,
+        rooms,
+        trimmed,
+        user?.uid || 'admin',
+      )
+      onFlash(`Room “${trimmed}” added.`)
+      setName('')
+    } catch (err: any) {
+      console.error('RoomsPanel:', err)
+      setError(err?.message || 'Failed to update rooms.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function saveEdit(roomId: string) {
@@ -76,8 +80,19 @@ export default function RoomsPanel({
       setError('A room with that name already exists.')
       return
     }
-    const next = rooms.map((r) => (r.id === roomId ? { ...r, name: trimmed } : r))
-    await persistRooms(next, `Room renamed to “${trimmed}”.`)
+    setBusy(true)
+    setError(null)
+    try {
+      await renameRoomDualWrite(getClientFirestore(), showId, rooms, roomId, trimmed)
+      onFlash(`Room renamed to “${trimmed}”.`)
+      setEditingId(null)
+      setEditName('')
+    } catch (err: any) {
+      console.error('RoomsPanel:', err)
+      setError(err?.message || 'Failed to update rooms.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function removeRoom(room: ShowRoom) {
@@ -88,14 +103,24 @@ export default function RoomsPanel({
       )
       return
     }
-    const next = rooms.filter((r) => r.id !== room.id)
-    await persistRooms(next, `Room “${room.name}” removed.`)
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteRoomDualWrite(getClientFirestore(), showId, rooms, room.id)
+      onFlash(`Room “${room.name}” removed.`)
+    } catch (err: any) {
+      console.error('RoomsPanel:', err)
+      setError(err?.message || 'Failed to update rooms.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
     <div className="card" style={{ padding: 'var(--space-5)' }}>
       <p className="text-sm" style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}>
-        Rooms are the physical spaces operators pick after unlock. Sessions must be assigned to a room.
+        Rooms are physical spaces for Operator unlock and attendee QR targets. Canonical docs live
+        under the show; the name list on the show stays dual-written for Operator.
       </p>
 
       {error && (
@@ -158,35 +183,45 @@ export default function RoomsPanel({
               ) : (
                 <>
                   <span style={{ fontWeight: 600 }}>{room.name}</span>
-                  {canEdit ? (
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
+                  <div className="flex gap-2">
+                    {canOpenRoom ? (
+                      <Link
+                        href={`/admin/shows/${showId}/rooms/${room.id}`}
                         className="btn btn-secondary btn-sm"
-                        disabled={busy}
-                        onClick={() => {
-                          setEditingId(room.id)
-                          setEditName(room.name)
-                          setError(null)
-                        }}
                       >
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        disabled={busy}
-                        title={
-                          sessionRoomIds.has(room.id)
-                            ? 'Room is used by sessions'
-                            : 'Remove room'
-                        }
-                        onClick={() => removeRoom(room)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ) : null}
+                        {canEdit ? 'Edit' : 'QR'}
+                      </Link>
+                    ) : null}
+                    {canEdit ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          disabled={busy}
+                          onClick={() => {
+                            setEditingId(room.id)
+                            setEditName(room.name)
+                            setError(null)
+                          }}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          disabled={busy}
+                          title={
+                            sessionRoomIds.has(room.id)
+                              ? 'Room is used by sessions'
+                              : 'Remove room'
+                          }
+                          onClick={() => removeRoom(room)}
+                        >
+                          Remove
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
                 </>
               )}
             </li>

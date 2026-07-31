@@ -13,6 +13,31 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Room logos (override) + QR — public read for attendee/print
+    match /shows/{showId}/rooms/{roomId}/{fileName} {
+      allow read: if fileName.matches('qr\\.(png|svg)') || fileName.matches('logo\\..+');
+      allow write: if request.auth != null
+        && (
+          fileName.matches('qr\\.(png|svg)')
+          || fileName.matches('logo\\..+')
+        )
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Session QR codes — same policy as room QR
+    match /shows/{showId}/sessions/{sessionId}/{fileName} {
+      // Audio remains auth-only (more specific path below wins when overlapping — see audio match)
+      allow read: if fileName.matches('qr\\.(png|svg)');
+      allow write: if request.auth != null
+        && fileName.matches('qr\\.(png|svg)')
+        && request.resource.size < 2 * 1024 * 1024
+        && (
+          request.resource.contentType == 'image/png'
+          || request.resource.contentType == 'image/svg+xml'
+        );
+    }
+
     // PDF exports — readable by authenticated users assigned to the show
     // Writable by server (Cloud Functions Admin SDK)
     match /exports/{showId}/{fileName} {

@@ -159,7 +159,7 @@ export default function ShowsDashboard() {
                   <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
                     {formatDateRange(show.startDate, show.endDate)}
                     {' · '}
-                    /portal/{show.branding?.portalURL || '—'}
+                    /show/{show.branding?.portalURL || '—'}
                   </p>
                 </div>
                 <span className={`badge ${show.portalPublished ? 'badge-success' : 'badge-muted'}`}>

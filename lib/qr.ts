@@ -16,6 +16,9 @@ export type QrTargetType = 'room' | 'session'
 export type QrFormat = 'png' | 'svg'
 export type QrAction = 'generate' | 'regenerate' | 'download'
 
+/** CDN-friendly TTL for QR objects — short so a missed bust cannot linger for an hour. */
+export const QR_CACHE_CONTROL = 'public, max-age=120'
+
 export function qrStoragePath(
   showId: string,
   type: QrTargetType,
@@ -35,6 +38,22 @@ export function qrDocRef(showId: string, type: QrTargetType, id: string) {
   return type === 'room'
     ? fs.doc(`shows/${showId}/rooms/${id}`)
     : fs.doc(`shows/${showId}/sessions/${id}`)
+}
+
+/**
+ * Append/replace `v=` with the Storage object generation so each persist
+ * yields a distinct URL for browsers/CDNs even though the object path is stable.
+ */
+export function appendQrCacheBust(url: string, generation: string | number): string {
+  const v = String(generation)
+  try {
+    const u = new URL(url)
+    u.searchParams.set('v', v)
+    return u.toString()
+  } catch {
+    const cleaned = url.replace(/([?&])v=[^&]*&?/, '$1').replace(/[?&]$/, '')
+    return `${cleaned}${cleaned.includes('?') ? '&' : '?'}v=${encodeURIComponent(v)}`
+  }
 }
 
 export async function generateQrBuffer(
@@ -70,20 +89,25 @@ export async function uploadQrToStorage(
   await file.save(buffer, {
     metadata: {
       contentType,
-      cacheControl: 'public, max-age=3600',
+      cacheControl: QR_CACHE_CONTROL,
     },
     resumable: false,
   })
   await file.makePublic().catch(() => {})
 
   const [meta] = await file.getMetadata()
+  const generation = meta.generation || String(Date.now())
   const token = meta.metadata?.firebaseStorageDownloadTokens
+
+  let baseUrl: string
   if (token) {
     const encoded = encodeURIComponent(storagePath)
-    return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encoded}?alt=media&token=${token}`
+    baseUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encoded}?alt=media&token=${token}`
+  } else {
+    baseUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`
   }
 
-  return `https://storage.googleapis.com/${bucket.name}/${storagePath}`
+  return appendQrCacheBust(baseUrl, generation)
 }
 
 export async function readQrFromStorage(
@@ -104,6 +128,7 @@ export async function readQrFromStorage(
 /**
  * Create/overwrite PNG + SVG for a target and persist qrCodeUrl (PNG).
  * Shared by generate + regenerate so tab and edit page never diverge.
+ * qrCodeUrl always includes a generation cache-bust query param.
  */
 export async function persistQrPair(
   showId: string,

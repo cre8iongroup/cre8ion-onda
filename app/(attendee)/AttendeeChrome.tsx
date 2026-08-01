@@ -82,6 +82,11 @@ export function LegalNoticeMarkdown({ source }: { source: string }) {
   )
 }
 
+/**
+ * Legal notice (after main content) + Onda attribution (sticky-footer via
+ * margin-top: auto on .attendee-powered-by). Kept as one component so show /
+ * room / session pages stay uniform — shell/session inner are flex columns.
+ */
 export function AttendeeFooter({
   eventTitle,
   legalNotice,
@@ -90,14 +95,20 @@ export function AttendeeFooter({
   legalNotice?: string
 }) {
   return (
-    <footer className="attendee-footer">
-      <p>
-        {eventTitle} · Powered by{' '}
-        <a href="https://cre8ion.com" rel="noopener noreferrer">
-          cre8ion Onda
-        </a>
-      </p>
-      {legalNotice?.trim() ? <LegalNoticeMarkdown source={legalNotice.trim()} /> : null}
-    </footer>
+    <>
+      {legalNotice?.trim() ? (
+        <aside className="attendee-legal-block" aria-label="Legal notice">
+          <LegalNoticeMarkdown source={legalNotice.trim()} />
+        </aside>
+      ) : null}
+      <footer className="attendee-powered-by">
+        <p>
+          {eventTitle} · Powered by{' '}
+          <a href="https://cre8ion.com" rel="noopener noreferrer">
+            cre8ion Onda
+          </a>
+        </p>
+      </footer>
+    </>
   )
 }

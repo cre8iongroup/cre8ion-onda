@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   },
   description: 'Real-time live translation, captions, and AI-powered session notes for live events.',
   manifest: '/manifest.json',
+  // Metadata-driven only — no app/favicon.ico (that auto-injected a second <link rel="icon">).
+  icons: {
+    icon: [{ url: '/onda-operator-icon.png', type: 'image/png' }],
+    apple: [{ url: '/onda-operator-icon.png', type: 'image/png' }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -42,8 +47,6 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* PWA iOS splash */}
-        <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
       <body>

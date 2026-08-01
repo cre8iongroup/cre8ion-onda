@@ -100,6 +100,7 @@
   border-top: 1px solid color-mix(in srgb, var(--attendee-text, #fff) 12%, transparent);
   font-size: var(--text-sm);
   color: color-mix(in srgb, var(--attendee-text, #f0f0fa) 55%, transparent);
+  text-align: center;
 }
 
 .attendee-powered-by p {

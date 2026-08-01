@@ -8,8 +8,8 @@
 import type { Metadata } from 'next'
 import type { EffectiveBranding } from '@/types'
 
-const DEFAULT_FAVICON = '/favicon.ico'
-const DEFAULT_APPLE_ICON = '/onda-operator-icon.png'
+/** Same asset as root layout metadata icons (public/, not app/favicon.ico). */
+const ONDA_DEFAULT_ICON = '/onda-operator-icon.png'
 
 /** Show-level favicon from logoUrl; Onda defaults when unset. */
 export function attendeeFaviconIcons(
@@ -18,8 +18,8 @@ export function attendeeFaviconIcons(
   const logo = showBranding?.logoUrl?.trim()
   if (!logo) {
     return {
-      icon: [{ url: DEFAULT_FAVICON }],
-      apple: [{ url: DEFAULT_APPLE_ICON }],
+      icon: [{ url: ONDA_DEFAULT_ICON, type: 'image/png' }],
+      apple: [{ url: ONDA_DEFAULT_ICON, type: 'image/png' }],
     }
   }
   return {

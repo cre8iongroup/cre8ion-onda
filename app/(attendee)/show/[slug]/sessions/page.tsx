@@ -1,10 +1,29 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
 import { loadPublicSessionsForShow, resolveShowBySlug } from '@/lib/attendee/load'
 import { formatSessionTime, groupSessionsByDay } from '@/lib/attendee/schedule'
+import { attendeePageMetadata } from '@/lib/attendee/shareMeta'
 import { AttendeeFooter, AttendeeShell } from '../../../AttendeeChrome'
 
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}): Promise<Metadata> {
+  const { slug } = await params
+  const show = await resolveShowBySlug(slug)
+  if (!show) {
+    return attendeePageMetadata({ title: 'Sessions', showBranding: null })
+  }
+  return attendeePageMetadata({
+    title: `Sessions · ${show.name}`,
+    description: `All visible sessions for ${show.name}`,
+    showBranding: show.branding,
+  })
+}
 
 export default async function ShowSessionsPage({
   params,

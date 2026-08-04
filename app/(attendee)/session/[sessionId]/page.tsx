@@ -47,6 +47,7 @@ export default async function SessionPage({
       room={room}
       branding={branding}
       initialFeedState={session.feedState}
+      defaultLanguages={show.defaultLanguages}
     />
   )
 }

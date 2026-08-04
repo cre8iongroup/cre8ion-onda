@@ -34,6 +34,8 @@ export type PublicShow = {
   branding: EffectiveBranding
   legalNotice?: string
   rooms: Array<{ id: string; name: string }>
+  /** Show-level caption languages (source of truth for attendee selector). */
+  defaultLanguages: string[]
 }
 
 export type PublicSession = {
@@ -118,6 +120,9 @@ function publicShowFromDoc(id: string, data: ShowDoc): PublicShow | null {
     branding: mapShowBranding(data.branding),
     legalNotice: data.branding?.legalNotice,
     rooms,
+    defaultLanguages: Array.isArray(data.defaultLanguages)
+      ? data.defaultLanguages.filter((l): l is string => typeof l === 'string')
+      : ['en'],
   }
 }
 

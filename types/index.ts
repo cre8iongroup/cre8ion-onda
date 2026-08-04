@@ -139,6 +139,9 @@ export interface EffectiveBranding {
 /** Admin-selected Deepgram caption formatting for Onda Operator recording. */
 export type TranscriptionStyle = 'standard' | 'lightweight'
 
+/** Backend-only DeepL glossary sync state (Firestore console / CF logs — no admin UI). */
+export type GlossarySyncStatus = 'idle' | 'syncing' | 'error'
+
 export interface ShowDoc {
   name: string
   clientName: string
@@ -147,6 +150,10 @@ export interface ShowDoc {
   glossary: GlossaryEntry[]
   // Registered DeepL glossary IDs per language pair key (e.g. 'en-es', 'en-pt')
   deepLGlossaryIds?: Record<string, string>
+  /** Backend troubleshooting only — set by syncDeepLGlossary callable. */
+  glossarySyncStatus?: GlossarySyncStatus
+  glossarySyncError?: string | null
+  glossarySyncedAt?: Timestamp | null
   branding: ShowBranding
   defaultLanguages: string[]  // e.g. ['en', 'es', 'pt', 'fr']
   portalPublished: boolean

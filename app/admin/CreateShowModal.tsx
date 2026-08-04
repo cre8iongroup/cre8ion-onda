@@ -139,6 +139,9 @@ export default function CreateShowModal({
         startDate: Timestamp.fromDate(start),
         endDate: Timestamp.fromDate(end),
         glossary: [],
+        glossarySyncStatus: 'idle',
+        glossarySyncError: null,
+        glossarySyncedAt: null,
         branding: {
           primaryColor: accents.primaryColor,
           secondaryColor: accents.secondaryColor,

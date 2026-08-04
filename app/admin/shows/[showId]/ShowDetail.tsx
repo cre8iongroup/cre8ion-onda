@@ -23,6 +23,8 @@ import BrandingPanel from './BrandingPanel'
 import ShowLinksPanel from './ShowLinksPanel'
 import PublishPanel from './PublishPanel'
 import TimezonePanel from './TimezonePanel'
+import LanguagesPanel from './LanguagesPanel'
+import GlossaryPanel from './GlossaryPanel'
 import QrCodesTab from './QrCodesTab'
 import { showPublicUrl } from '@/lib/attendee/urls'
 import {
@@ -391,6 +393,28 @@ export default function ShowDetail({ showId }: { showId: string }) {
             <TimezonePanel
               showId={show.id}
               showTimezone={show.showTimezone}
+              canEdit={canEditShows}
+              onFlash={setFlash}
+            />
+          </section>
+          <section style={{ marginBottom: 'var(--space-8)' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
+              Caption languages
+            </h2>
+            <LanguagesPanel
+              showId={show.id}
+              defaultLanguages={show.defaultLanguages}
+              canEdit={canEditShows}
+              onFlash={setFlash}
+            />
+          </section>
+          <section style={{ marginBottom: 'var(--space-8)' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
+              Translation glossary
+            </h2>
+            <GlossaryPanel
+              showId={show.id}
+              glossary={show.glossary}
               canEdit={canEditShows}
               onFlash={setFlash}
             />

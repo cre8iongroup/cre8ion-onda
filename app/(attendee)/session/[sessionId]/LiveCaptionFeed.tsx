@@ -1,10 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   limitToLast,
   onChildAdded,
+  onChildChanged,
+  onChildRemoved,
   onValue,
   orderByChild,
   query,
@@ -13,6 +15,13 @@ import {
 import { getClientDatabase } from '@/lib/firebase/client'
 import { formatSessionDateTime } from '@/lib/attendee/schedule'
 import { buildCaptionDisplayLines } from '@/lib/attendee/captionLines'
+import {
+  CAPTION_LANGUAGE_OPTIONS,
+  mapChunksForCaptionLanguage,
+  normalizeCaptionLanguages,
+  readStoredCaptionLang,
+  writeStoredCaptionLang,
+} from '@/lib/attendee/captionLanguage'
 import type { EffectiveBranding, FeedState, RTDBChunk, WithId } from '@/types'
 import { AttendeeFooter, AttendeeSafariTint, brandingStyle } from '../../AttendeeChrome'
 import { AttendeeThemeColor } from '../../AttendeeThemeColor'
@@ -56,6 +65,10 @@ function waitingCopy(feedState: FeedState): { title: string; body: string; badge
   }
 }
 
+function sortChunks(rows: ChunkRow[]): ChunkRow[] {
+  return [...rows].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+}
+
 export default function LiveCaptionFeed({
   sessionId,
   title,
@@ -66,6 +79,7 @@ export default function LiveCaptionFeed({
   room,
   branding,
   initialFeedState,
+  defaultLanguages,
 }: {
   sessionId: string
   title: string
@@ -76,15 +90,24 @@ export default function LiveCaptionFeed({
   room: { id: string; name: string } | null
   branding: EffectiveBranding
   initialFeedState: FeedState
+  defaultLanguages?: string[]
 }) {
+  const availableLanguages = useMemo(
+    () => normalizeCaptionLanguages(defaultLanguages),
+    [defaultLanguages],
+  )
+  const showLanguageSelector = availableLanguages.length > 1
+
   const [feedState, setFeedState] = useState<FeedState>(initialFeedState)
   const [chunks, setChunks] = useState<ChunkRow[]>([])
   const [textSize, setTextSize] = useState<TextSize>('md')
+  const [captionLang, setCaptionLang] = useState<string>('en')
   const feedRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setTextSize(readStoredTextSize())
-  }, [])
+    setCaptionLang(readStoredCaptionLang(availableLanguages))
+  }, [availableLanguages])
 
   useEffect(() => {
     const db = getClientDatabase()
@@ -110,27 +133,54 @@ export default function LiveCaptionFeed({
     )
     const seen = new Map<string, ChunkRow>()
 
+    function publish() {
+      setChunks(sortChunks(Array.from(seen.values())))
+    }
+
     const unsubAdded = onChildAdded(chunksRef, (snap) => {
       const val = snap.val() as RTDBChunk
-      if (!val?.text) return
-      seen.set(snap.key!, { id: snap.key!, ...val })
-      setChunks(
-        Array.from(seen.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)),
-      )
+      if (!val?.text || !snap.key) return
+      seen.set(snap.key, { id: snap.key, ...val })
+      publish()
     })
 
-    return () => unsubAdded()
+    // Translation fills arrive as child updates on the same chunk node
+    const unsubChanged = onChildChanged(chunksRef, (snap) => {
+      const val = snap.val() as RTDBChunk
+      if (!snap.key) return
+      if (!val?.text) {
+        seen.delete(snap.key)
+        publish()
+        return
+      }
+      seen.set(snap.key, { id: snap.key, ...val })
+      publish()
+    })
+
+    const unsubRemoved = onChildRemoved(chunksRef, (snap) => {
+      if (!snap.key) return
+      seen.delete(snap.key)
+      publish()
+    })
+
+    return () => {
+      unsubAdded()
+      unsubChanged()
+      unsubRemoved()
+    }
   }, [sessionId, feedState])
 
-  // Match Operator: coalesce partials into one in-progress line + finalized lines.
-  const displayLines = buildCaptionDisplayLines(chunks)
+  // Language toggle only remaps local state — same RTDB subscription.
+  const displayLines = buildCaptionDisplayLines(
+    mapChunksForCaptionLanguage(chunks, captionLang),
+  )
 
   useLayoutEffect(() => {
     if (feedState !== 'live') return
     const el = feedRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [chunks, feedState, textSize])
+  }, [chunks, feedState, textSize, captionLang])
 
   function selectTextSize(next: TextSize) {
     setTextSize(next)
@@ -141,10 +191,20 @@ export default function LiveCaptionFeed({
     }
   }
 
+  function selectCaptionLang(next: string) {
+    if (!availableLanguages.includes(next)) return
+    setCaptionLang(next)
+    writeStoredCaptionLang(next)
+  }
+
   const isLive = feedState === 'live'
   const waiting = waitingCopy(feedState)
   const scheduledLabel =
     scheduledStartMs > 0 ? formatSessionDateTime(scheduledStartMs, showTimezone) : null
+
+  const langOptions = CAPTION_LANGUAGE_OPTIONS.filter((o) =>
+    availableLanguages.includes(o.code),
+  )
 
   return (
     <div className="session-shell" style={brandingStyle(branding)} data-text-size={textSize}>
@@ -163,31 +223,50 @@ export default function LiveCaptionFeed({
             <h1 className="session-title">{title}</h1>
           </div>
           {isLive ? (
-            <div
-              className="caption-size-control"
-              role="group"
-              aria-label="Caption text size"
-            >
-              {TEXT_SIZES.map((size) => (
-                <button
-                  key={size}
-                  type="button"
-                  className={`caption-size-btn${textSize === size ? ' is-active' : ''}`}
-                  aria-pressed={textSize === size}
-                  aria-label={
-                    size === 'sm'
-                      ? 'Small captions'
-                      : size === 'md'
-                        ? 'Medium captions'
-                        : 'Large captions'
-                  }
-                  onClick={() => selectTextSize(size)}
-                >
-                  <span className={`caption-size-glyph caption-size-glyph--${size}`} aria-hidden>
-                    A
-                  </span>
-                </button>
-              ))}
+            <div className="session-header-controls">
+              {showLanguageSelector ? (
+                <label className="caption-lang-control">
+                  <span className="visually-hidden">Caption language</span>
+                  <select
+                    className="caption-lang-select"
+                    value={captionLang}
+                    aria-label="Caption language"
+                    onChange={(e) => selectCaptionLang(e.target.value)}
+                  >
+                    {langOptions.map((opt) => (
+                      <option key={opt.code} value={opt.code}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <div
+                className="caption-size-control"
+                role="group"
+                aria-label="Caption text size"
+              >
+                {TEXT_SIZES.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    className={`caption-size-btn${textSize === size ? ' is-active' : ''}`}
+                    aria-pressed={textSize === size}
+                    aria-label={
+                      size === 'sm'
+                        ? 'Small captions'
+                        : size === 'md'
+                          ? 'Medium captions'
+                          : 'Large captions'
+                    }
+                    onClick={() => selectTextSize(size)}
+                  >
+                    <span className={`caption-size-glyph caption-size-glyph--${size}`} aria-hidden>
+                      A
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
         </header>

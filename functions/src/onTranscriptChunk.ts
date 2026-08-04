@@ -1,12 +1,10 @@
-import * as functions from 'firebase-functions'
+import * as functions from 'firebase-functions/v1'
 import * as admin from 'firebase-admin'
 import * as deepl from 'deepl-node'
 
 if (!admin.apps.length) admin.initializeApp()
 const db = admin.database()
 const firestore = admin.firestore()
-
-const SUPPORTED_TARGET_LANGS: deepl.TargetLanguageCode[] = ['es', 'pt-BR', 'fr']
 
 // Map our internal language codes to DeepL target language codes
 const LANG_MAP: Record<string, deepl.TargetLanguageCode> = {
@@ -15,25 +13,19 @@ const LANG_MAP: Record<string, deepl.TargetLanguageCode> = {
   fr: 'fr',
 }
 
-// Map language pairs to firestore field keys
-const LANG_FIELD: Record<string, string> = {
-  es: 'es',
-  pt: 'pt',
-  fr: 'fr',
-}
-
 /**
  * RTDB Trigger — fires when a new transcript chunk is written to
  * /liveSessions/{sessionId}/chunks/{chunkId}
  *
- * Only processes finalized (isFinal: true) chunks to avoid wasting API calls
+ * Only processes finalized (isFinalized: true) chunks to avoid wasting API calls
  * on mid-word partial transcripts from Recall.AI.
  *
- * Fans out to DeepL in parallel for each target language. Writes translations
- * back to the same RTDB chunk node. Respects the show-level DeepL glossary IDs
- * by looking up the session → show → deepLGlossaryIds.
+ * Fans out to DeepL in parallel for each Show defaultLanguages target (minus en).
+ * Writes successful translations back to the same RTDB chunk node. Per-language
+ * failures are skipped + logged — English text stays available; attendees on the
+ * failed language simply omit that line.
  *
- * Test term: "ALPFA Militia" should pass through unchanged if present in glossary.
+ * Respects show-level deepLGlossaryIds by looking up session → show.
  */
 export const onTranscriptChunk = functions.database
   .ref('/liveSessions/{sessionId}/chunks/{chunkId}')
@@ -43,24 +35,28 @@ export const onTranscriptChunk = functions.database
 
     // Only translate finalized chunks
     if (!chunk.isFinalized) {
-      functions.logger.debug('onTranscriptChunk: skipping non-final chunk', { chunkId })
+      functions.logger.debug('onTranscriptChunk: skipping non-final chunk', { chunkId, sessionId })
+      return null
+    }
+
+    const sourceText = typeof chunk.text === 'string' ? chunk.text.trim() : ''
+    if (!sourceText) {
+      functions.logger.debug('onTranscriptChunk: skipping empty text', { chunkId, sessionId })
       return null
     }
 
     const apiKey = process.env.DEEPL_API_KEY
     if (!apiKey) {
-      functions.logger.error('onTranscriptChunk: DEEPL_API_KEY not set')
+      functions.logger.error('onTranscriptChunk: DEEPL_API_KEY not set', { chunkId, sessionId })
       return null
     }
 
     const translator = new deepl.Translator(apiKey)
 
-    // ── Resolve show's DeepL glossary IDs
+    // ── Resolve show's DeepL glossary IDs + defaultLanguages
     let deepLGlossaryIds: Record<string, string> = {}
+    let defaultLanguages: string[] = []
     try {
-      // The session node in Firestore holds its showId via the collection path.
-      // We need to query: shows where sessions contains sessionId
-      // For efficiency in v1: query sessions across all shows (TODO: optimize with index)
       const sessionsQuery = await firestore
         .collectionGroup('sessions')
         .where(admin.firestore.FieldPath.documentId(), '==', sessionId)
@@ -72,44 +68,92 @@ export const onTranscriptChunk = functions.database
         const showRef = sessionRef.parent.parent
         if (showRef) {
           const showSnap = await showRef.get()
-          deepLGlossaryIds = showSnap.data()?.deepLGlossaryIds ?? {}
+          const showData = showSnap.data() ?? {}
+          deepLGlossaryIds = showData.deepLGlossaryIds ?? {}
+          defaultLanguages = Array.isArray(showData.defaultLanguages)
+            ? showData.defaultLanguages.filter((l: unknown): l is string => typeof l === 'string')
+            : []
         }
+      } else {
+        functions.logger.warn('onTranscriptChunk: session not found for glossary/languages', {
+          chunkId,
+          sessionId,
+        })
       }
     } catch (err) {
-      functions.logger.warn('onTranscriptChunk: could not resolve glossary IDs', err)
+      functions.logger.warn('onTranscriptChunk: could not resolve show config', {
+        chunkId,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+
+    // Targets = Show defaultLanguages minus en, limited to known DeepL map keys
+    const targetLangs = defaultLanguages.filter(
+      (lang) => lang !== 'en' && Object.prototype.hasOwnProperty.call(LANG_MAP, lang),
+    )
+
+    if (targetLangs.length === 0) {
+      functions.logger.info('onTranscriptChunk: no target languages — skipping DeepL', {
+        chunkId,
+        sessionId,
+        defaultLanguages,
+      })
+      return null
     }
 
     // ── Fan out DeepL calls in parallel
     const translationResults = await Promise.allSettled(
-      Object.entries(LANG_MAP).map(async ([langKey, deeplLang]) => {
+      targetLangs.map(async (langKey) => {
+        const deeplLang = LANG_MAP[langKey]
         const langPairKey = `en-${langKey}`
         const glossaryId = deepLGlossaryIds[langPairKey]
 
         const result = await translator.translateText(
-          chunk.text,
+          sourceText,
           'en' as deepl.SourceLanguageCode,
           deeplLang,
           {
             glossary: glossaryId ?? undefined,
-          }
+          },
         )
-        return { langKey, translation: result.text }
-      })
+        const translation = Array.isArray(result) ? result[0]?.text : result.text
+        if (!translation) {
+          throw new Error('DeepL returned empty translation')
+        }
+        return { langKey, translation }
+      }),
     )
 
-    // ── Build translations object
+    // ── Build translations object — skip + log per-language failures
     const translations: Record<string, string> = {}
-    for (const result of translationResults) {
+    for (let i = 0; i < translationResults.length; i++) {
+      const result = translationResults[i]
+      const langKey = targetLangs[i]
       if (result.status === 'fulfilled') {
         translations[result.value.langKey] = result.value.translation
       } else {
-        functions.logger.error('onTranscriptChunk: translation failed', result.reason)
+        const reason =
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason ?? 'unknown error')
+        functions.logger.error('onTranscriptChunk: translation failed — skipping language', {
+          chunkId,
+          sessionId,
+          language: langKey,
+          error: reason,
+        })
       }
     }
 
-    // ── Write translations back to RTDB chunk
+    // ── Write translations back to RTDB chunk (partial OK)
     await db.ref(`/liveSessions/${sessionId}/chunks/${chunkId}/translations`).set(translations)
-    functions.logger.info('onTranscriptChunk: translations written', { chunkId, languages: Object.keys(translations) })
+    functions.logger.info('onTranscriptChunk: translations written', {
+      chunkId,
+      sessionId,
+      languages: Object.keys(translations),
+      skipped: targetLangs.filter((l) => !translations[l]),
+    })
 
     return null
   })

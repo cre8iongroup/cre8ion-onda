@@ -42,5 +42,10 @@ export function getClientStorage() {
   return getStorage(getFirebaseApp())
 }
 
+export function getClientFunctions() {
+  const { getFunctions } = require('firebase/functions')
+  return getFunctions(getFirebaseApp())
+}
+
 // Named exports for convenience — only call these in 'use client' context
 export const app       = typeof window !== 'undefined' ? getFirebaseApp() : null

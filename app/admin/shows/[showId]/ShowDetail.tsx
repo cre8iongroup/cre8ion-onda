@@ -570,6 +570,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
               showId={show.id}
               transcriptionStyle={show.transcriptionStyle}
               operatorInstructions={show.operatorInstructions}
+              deepgramKeyterms={show.deepgramKeyterms}
               canEdit={canManageTech}
               onFlash={setFlash}
             />

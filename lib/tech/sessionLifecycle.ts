@@ -41,6 +41,8 @@ export type UnlockedShow = {
   portalURL: string | null
   /** Deepgram style for recording-start; defaults to standard if missing on older docs. */
   transcriptionStyle: TranscriptionStyle
+  /** Deepgram keyterm prompts for recording-start; empty when missing on older docs. */
+  deepgramKeyterms: string[]
   /** Markdown source for Operator UI; null when empty/missing. */
   operatorInstructions: string | null
 }
@@ -149,6 +151,13 @@ export async function unlockShowByCredential(
       ? showData.operatorInstructions.trim()
       : ''
 
+  const deepgramKeyterms = Array.isArray(showData.deepgramKeyterms)
+    ? showData.deepgramKeyterms
+        .filter((t): t is string => typeof t === 'string')
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0)
+    : []
+
   return {
     show: {
       id: showDoc.id,
@@ -157,6 +166,7 @@ export async function unlockShowByCredential(
       portalURL: showData.branding?.portalURL ?? null,
       transcriptionStyle:
         showData.transcriptionStyle === 'lightweight' ? 'lightweight' : 'standard',
+      deepgramKeyterms,
       operatorInstructions: instructions.length > 0 ? instructions : null,
     },
     rooms,

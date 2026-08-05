@@ -186,6 +186,13 @@ export interface ShowDoc {
    */
   transcriptionStyle: TranscriptionStyle
   /**
+   * Short list of Deepgram keyterm prompts (Nova-3) for stage-specific terms
+   * the model struggles with (e.g. "ALPFA"). Applied at Operator recording-start
+   * via deepgram_streaming.keyterm. Empty/missing → omit keyterm from config.
+   * Keep short — boost only terms that need help, not a full glossary.
+   */
+  deepgramKeyterms?: string[]
+  /**
    * Admin-authored markdown shown read-only in Onda Operator under Input/Network.
    * Empty/missing → Operator hides the block.
    */

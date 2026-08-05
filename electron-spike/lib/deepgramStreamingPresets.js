@@ -2,6 +2,7 @@
  * Deepgram streaming presets (Electron mirror of lib/recall/deepgramStreamingPresets.*).
  *
  * Primary: show.transcriptionStyle → TRANSCRIPTION_STYLE_TO_PRESET → presetId.
+ * Optional: show.deepgramKeyterms → deepgram_streaming.keyterm (string[]).
  * Fallback when style absent: DEEPGRAM_STREAMING_PRESET env, then JSON `active`, then baseline.
  *
  * Keep in sync with lib/recall/deepgramStreamingPresets.ts.
@@ -57,24 +58,45 @@ function resolvePresetId(override) {
   return 'baseline'
 }
 
-function buildDeepgramStreamingConfig({ language, presetId } = {}) {
+/** Trim, drop empties, de-dupe (case-sensitive — Deepgram treats terms as-is). */
+function normalizeDeepgramKeyterms(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return []
+  const out = []
+  const seen = new Set()
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const term = item.trim()
+    if (!term || seen.has(term)) continue
+    seen.add(term)
+    out.push(term)
+  }
+  return out
+}
+
+function buildDeepgramStreamingConfig({ language, presetId, keyterms } = {}) {
   const id = resolvePresetId(presetId)
   const preset = presetsFile.presets[id]
+  const normalizedKeyterms = normalizeDeepgramKeyterms(keyterms)
+  const deepgram_streaming = {
+    model: 'nova-3',
+    language: language || 'en',
+    ...preset.options,
+  }
+  if (normalizedKeyterms.length > 0) {
+    deepgram_streaming.keyterm = normalizedKeyterms
+  }
   return {
     presetId: id,
     label: preset.label,
     notes: preset.notes,
-    deepgram_streaming: {
-      model: 'nova-3',
-      language: language || 'en',
-      ...preset.options,
-    },
+    deepgram_streaming,
   }
 }
 
 module.exports = {
   TRANSCRIPTION_STYLE_TO_PRESET,
   presetIdForTranscriptionStyle,
+  normalizeDeepgramKeyterms,
   buildDeepgramStreamingConfig,
   resolvePresetId,
 }

@@ -356,24 +356,44 @@ export default function App() {
     if (screen !== 'record' || !selectedSessionId) return undefined
 
     const sessionId = selectedSessionId
+    const path = `liveSessions/${sessionId}/feedState`
     let unsub = () => {}
+    let sawSnapshot = false
+    appendLog({
+      level: 'info',
+      message: `RTDB feedState listening on ${path}`,
+      extra: { sessionId, screen },
+    })
     try {
       const db = getRendererDatabase()
-      const feedRef = ref(db, `liveSessions/${sessionId}/feedState`)
+      const feedRef = ref(db, path)
       unsub = onValue(
         feedRef,
         (snap) => {
           const next = snap.val()
+          sawSnapshot = true
           // Ignore null/missing (node deleted after ended cleanup) — keep last known UI state.
-          if (typeof next !== 'string' || !next) return
-          setFeedState((prev) => {
-            if (prev === next) return prev
+          if (typeof next !== 'string' || !next) {
             appendLog({
               level: 'info',
-              message: `RTDB feedState → ${next}`,
-              extra: { sessionId, previous: prev },
+              message: 'RTDB feedState snapshot empty/null (ignored)',
+              extra: { sessionId, valueType: next === null ? 'null' : typeof next },
             })
-            return next
+            return
+          }
+          // Keep updater pure — capture previous for the diagnostic log below.
+          let previous = null
+          setFeedState((prev) => {
+            previous = prev
+            return prev === next ? prev : next
+          })
+          appendLog({
+            level: 'info',
+            message:
+              previous === next
+                ? `RTDB feedState snapshot ${next} (unchanged)`
+                : `RTDB feedState → ${next}`,
+            extra: { sessionId, previous },
           })
           setSessions((prev) =>
             prev.map((s) => (s.id === sessionId ? { ...s, feedState: next } : s)),
@@ -383,7 +403,7 @@ export default function App() {
           appendLog({
             level: 'warn',
             message: `RTDB feedState listen failed: ${err?.message || String(err)}`,
-            extra: { sessionId },
+            extra: { sessionId, sawSnapshot },
           })
         },
       )
@@ -396,6 +416,11 @@ export default function App() {
     }
 
     return () => {
+      appendLog({
+        level: 'info',
+        message: `RTDB feedState unsubscribed ${path}`,
+        extra: { sessionId, sawSnapshot },
+      })
       unsub()
     }
   }, [screen, selectedSessionId, appendLog])

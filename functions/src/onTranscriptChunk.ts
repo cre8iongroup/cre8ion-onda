@@ -25,7 +25,7 @@ const LANG_MAP: Record<string, deepl.TargetLanguageCode> = {
  * failures are skipped + logged — English text stays available; attendees on the
  * failed language simply omit that line.
  *
- * Respects show-level deepLGlossaryIds by looking up session → show.
+ * Respects show-level deepLGlossaryIds by looking up showId from RTDB live session.
  */
 export const onTranscriptChunk = functions.database
   .ref('/liveSessions/{sessionId}/chunks/{chunkId}')
@@ -45,37 +45,50 @@ export const onTranscriptChunk = functions.database
       return null
     }
 
-    const apiKey = process.env.DEEPL_API_KEY
-    if (!apiKey) {
+    const apiKeyRaw = process.env.DEEPL_API_KEY
+    if (!apiKeyRaw) {
       functions.logger.error('onTranscriptChunk: DEEPL_API_KEY not set', { chunkId, sessionId })
+      return null
+    }
+    const apiKey = apiKeyRaw.trim().replace(/^["']|["']$/g, '')
+    if (!apiKey) {
+      functions.logger.error('onTranscriptChunk: DEEPL_API_KEY empty after trim', {
+        chunkId,
+        sessionId,
+      })
       return null
     }
 
     const translator = new deepl.Translator(apiKey)
 
-    // ── Resolve show's DeepL glossary IDs + defaultLanguages
+    // ── Resolve show's DeepL glossary IDs + defaultLanguages via RTDB showId
+    // (collectionGroup + documentId(sessionId) does not match nested session paths)
     let deepLGlossaryIds: Record<string, string> = {}
     let defaultLanguages: string[] = []
     try {
-      const sessionsQuery = await firestore
-        .collectionGroup('sessions')
-        .where(admin.firestore.FieldPath.documentId(), '==', sessionId)
-        .limit(1)
-        .get()
+      const liveSnap = await db.ref(`/liveSessions/${sessionId}`).get()
+      const liveMeta = liveSnap.val() as { showId?: string } | null
+      const showId =
+        typeof liveMeta?.showId === 'string' && liveMeta.showId.trim()
+          ? liveMeta.showId.trim()
+          : null
 
-      if (!sessionsQuery.empty) {
-        const sessionRef = sessionsQuery.docs[0].ref
-        const showRef = sessionRef.parent.parent
-        if (showRef) {
-          const showSnap = await showRef.get()
-          const showData = showSnap.data() ?? {}
-          deepLGlossaryIds = showData.deepLGlossaryIds ?? {}
-          defaultLanguages = Array.isArray(showData.defaultLanguages)
-            ? showData.defaultLanguages.filter((l: unknown): l is string => typeof l === 'string')
-            : []
-        }
+      if (showId) {
+        const showSnap = await firestore.doc(`shows/${showId}`).get()
+        const showData = showSnap.data() ?? {}
+        deepLGlossaryIds = showData.deepLGlossaryIds ?? {}
+        defaultLanguages = Array.isArray(showData.defaultLanguages)
+          ? showData.defaultLanguages.filter((l: unknown): l is string => typeof l === 'string')
+          : []
+        functions.logger.info('onTranscriptChunk: show config resolved', {
+          chunkId,
+          sessionId,
+          showId,
+          defaultLanguages,
+          glossaryIdKeys: Object.keys(deepLGlossaryIds),
+        })
       } else {
-        functions.logger.warn('onTranscriptChunk: session not found for glossary/languages', {
+        functions.logger.warn('onTranscriptChunk: no showId on live session', {
           chunkId,
           sessionId,
         })

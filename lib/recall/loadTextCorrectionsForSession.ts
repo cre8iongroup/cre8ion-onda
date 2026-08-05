@@ -1,10 +1,15 @@
 /**
  * Load Show glossary text-correction rules for a live session.
  * Cached briefly so partial transcript webhooks don't hammer Firestore.
+ *
+ * Session → show resolution: read `showId` from RTDB `liveSessions/{sessionId}`
+ * (written at sound-check start). Do NOT use collectionGroup + FieldPath.documentId()
+ * with a bare session id — that filter expects a full document path and never
+ * matches `shows/{showId}/sessions/{sessionId}` (empty rules / thrown invalid query).
  */
 
-import { FieldPath } from 'firebase-admin/firestore'
-import { getAdminFirestore } from '@/lib/firebase/admin'
+import { getAdminFirestore, getRtdbJson } from '@/lib/firebase/admin'
+import { rtdbLiveSessionPath } from '@/lib/rtdbPaths'
 import {
   textCorrectionsFromGlossary,
   type TextCorrectionRule,
@@ -13,6 +18,7 @@ import {
 type CacheEntry = {
   expiresAt: number
   rules: TextCorrectionRule[]
+  showId: string
 }
 
 const CACHE_TTL_MS = 30_000
@@ -25,33 +31,57 @@ export async function loadTextCorrectionsForSession(
 
   const now = Date.now()
   const hit = cache.get(sessionId)
-  if (hit && hit.expiresAt > now) return hit.rules
+  if (hit && hit.expiresAt > now) {
+    console.info('[loadTextCorrectionsForSession] cache hit', {
+      sessionId,
+      showId: hit.showId,
+      ruleCount: hit.rules.length,
+    })
+    return hit.rules
+  }
 
   try {
+    const liveMeta = await getRtdbJson<{ showId?: string }>(rtdbLiveSessionPath(sessionId))
+    const showId =
+      typeof liveMeta?.showId === 'string' && liveMeta.showId.trim()
+        ? liveMeta.showId.trim()
+        : null
+
+    if (!showId) {
+      // Do not cache — liveSessions may not be written yet on the first chunk.
+      console.warn('[loadTextCorrectionsForSession] no showId on live session', {
+        sessionId,
+        liveMetaKeys: liveMeta && typeof liveMeta === 'object' ? Object.keys(liveMeta) : [],
+      })
+      return []
+    }
+
     const firestore = getAdminFirestore()
-    const sessionsQuery = await firestore
-      .collectionGroup('sessions')
-      .where(FieldPath.documentId(), '==', sessionId)
-      .limit(1)
-      .get()
-
-    if (sessionsQuery.empty) {
-      cache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules: [] })
+    const showSnap = await firestore.doc(`shows/${showId}`).get()
+    if (!showSnap.exists) {
+      console.warn('[loadTextCorrectionsForSession] show doc missing', { sessionId, showId })
       return []
     }
 
-    const showRef = sessionsQuery.docs[0].ref.parent.parent
-    if (!showRef) {
-      cache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules: [] })
-      return []
-    }
-
-    const showSnap = await showRef.get()
     const glossary = showSnap.data()?.glossary
-    const rules = textCorrectionsFromGlossary(
-      Array.isArray(glossary) ? glossary : [],
-    )
-    cache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules })
+    const glossaryEntries = Array.isArray(glossary) ? glossary : []
+    const rules = textCorrectionsFromGlossary(glossaryEntries)
+
+    console.info('[loadTextCorrectionsForSession] loaded', {
+      sessionId,
+      showId,
+      glossaryEntryCount: glossaryEntries.length,
+      ruleCount: rules.length,
+      rules: rules.map((r) => `${r.from}→${r.to}`),
+      sampleTerms: glossaryEntries
+        .slice(0, 5)
+        .map((e: { term?: unknown; alsoHeardAs?: unknown }) => ({
+          term: typeof e?.term === 'string' ? e.term : null,
+          alsoHeardAs: Array.isArray(e?.alsoHeardAs) ? e.alsoHeardAs : [],
+        })),
+    })
+
+    cache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules, showId })
     return rules
   } catch (err) {
     console.warn('[loadTextCorrectionsForSession] failed', {

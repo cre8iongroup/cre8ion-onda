@@ -21,6 +21,74 @@ const LANG_PAIRS: Array<{
 ]
 
 /**
+ * Normalize DEEPL_API_KEY from Cloud Functions env.
+ * Common footguns: trailing newlines from Secret Manager / Console paste,
+ * wrapping quotes, accidental "DeepL-Auth-Key " prefix.
+ */
+export function normalizeDeepLApiKey(raw: string): {
+  key: string
+  diagnostics: {
+    rawLength: number
+    trimmedLength: number
+    hadSurroundingWhitespace: boolean
+    hadWrappingQuotes: boolean
+    hadAuthPrefix: boolean
+    endsWithFx: boolean
+    inferredHost: 'api-free.deepl.com' | 'api.deepl.com'
+    keySuffix: string
+  }
+} {
+  const rawLength = raw.length
+  let key = raw.trim()
+  const hadSurroundingWhitespace = key.length !== rawLength
+
+  let hadWrappingQuotes = false
+  if (
+    (key.startsWith('"') && key.endsWith('"') && key.length >= 2) ||
+    (key.startsWith("'") && key.endsWith("'") && key.length >= 2)
+  ) {
+    hadWrappingQuotes = true
+    key = key.slice(1, -1).trim()
+  }
+
+  let hadAuthPrefix = false
+  if (/^deepl-auth-key\s+/i.test(key)) {
+    hadAuthPrefix = true
+    key = key.replace(/^deepl-auth-key\s+/i, '').trim()
+  }
+
+  const endsWithFx = key.endsWith(':fx')
+  return {
+    key,
+    diagnostics: {
+      rawLength,
+      trimmedLength: key.length,
+      hadSurroundingWhitespace,
+      hadWrappingQuotes,
+      hadAuthPrefix,
+      endsWithFx,
+      inferredHost: endsWithFx ? 'api-free.deepl.com' : 'api.deepl.com',
+      keySuffix: key.length >= 4 ? key.slice(-4) : '(short)',
+    },
+  }
+}
+
+function formatDeepLError(err: unknown): {
+  message: string
+  name?: string
+  stack?: string
+} {
+  if (err instanceof Error) {
+    return {
+      message: err.message,
+      name: err.name,
+      stack: err.stack?.split('\n').slice(0, 4).join('\n'),
+    }
+  }
+  return { message: String(err) }
+}
+
+/**
  * Callable Cloud Function — triggered by admin glossary editor Save.
  *
  * Reads the show's glossary array from Firestore, creates or replaces a DeepL
@@ -54,10 +122,26 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
     throw new functions.https.HttpsError('permission-denied', 'Insufficient permissions')
   }
 
-  const apiKey = process.env.DEEPL_API_KEY
-  if (!apiKey) {
+  const rawKey = process.env.DEEPL_API_KEY
+  if (!rawKey) {
+    functions.logger.error('syncDeepLGlossary: DEEPL_API_KEY env var missing', { showId })
     throw new functions.https.HttpsError('internal', 'DEEPL_API_KEY not configured')
   }
+
+  const { key: apiKey, diagnostics: keyDiag } = normalizeDeepLApiKey(rawKey)
+  if (!apiKey) {
+    functions.logger.error('syncDeepLGlossary: DEEPL_API_KEY empty after normalize', {
+      showId,
+      ...keyDiag,
+    })
+    throw new functions.https.HttpsError('internal', 'DEEPL_API_KEY not configured')
+  }
+
+  functions.logger.info('syncDeepLGlossary: DEEPL_API_KEY present', {
+    showId,
+    ...keyDiag,
+    // Never log the full key
+  })
 
   // ── 3. Load show glossary
   const showRef = firestore.collection('shows').doc(showId)
@@ -81,6 +165,33 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
 
     const translator = new deepl.Translator(apiKey)
     const showName = (showData.name ?? showId).replace(/[^a-zA-Z0-9 ]/g, '').substring(0, 40)
+
+    // Probe auth before glossary mutations so 401/403 is attributable to the key,
+    // not to a specific language-pair create call.
+    try {
+      const usage = await translator.getUsage()
+      functions.logger.info('syncDeepLGlossary: DeepL getUsage OK', {
+        showId,
+        characterCount: usage.character?.count ?? null,
+        characterLimit: usage.character?.limit ?? null,
+        inferredHost: keyDiag.inferredHost,
+      })
+    } catch (err) {
+      const formatted = formatDeepLError(err)
+      functions.logger.error('syncDeepLGlossary: DeepL auth rejected (getUsage)', {
+        showId,
+        ...keyDiag,
+        ...formatted,
+      })
+      throw new functions.https.HttpsError(
+        'internal',
+        `DeepL API key rejected (${formatted.message}). ` +
+          `DEEPL_API_KEY is set in Cloud Functions (len=${keyDiag.trimmedLength}, ` +
+          `host=${keyDiag.inferredHost}, suffix=…${keyDiag.keySuffix}). ` +
+          `Re-check the key in GCP/Firebase Functions env — Free keys must end with :fx; ` +
+          `trim quotes/newlines after paste.`,
+      )
+    }
 
     const langKeyMap: Record<string, 'es' | 'pt' | 'fr'> = {
       'en-es': 'es',
@@ -141,10 +252,11 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
             const match = existing.find((g) => g.name === glossaryName)
             if (match) await translator.deleteGlossary(match.glossaryId)
           } catch (err) {
+            const formatted = formatDeepLError(err)
             functions.logger.warn('syncDeepLGlossary: could not clean up old glossary', {
               fieldKey,
               showId,
-              error: err instanceof Error ? err.message : String(err),
+              ...formatted,
             })
           }
 
@@ -168,12 +280,14 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
             showId,
           })
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          pairErrors.push({ fieldKey, error: message })
+          const formatted = formatDeepLError(err)
+          pairErrors.push({ fieldKey, error: formatted.message })
           functions.logger.error('syncDeepLGlossary: pair failed', {
             fieldKey,
             showId,
-            error: message,
+            entryCount: entries.length,
+            inferredHost: keyDiag.inferredHost,
+            ...formatted,
           })
         }
       }),
@@ -244,7 +358,12 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
           : String(err)
 
     if (!(err instanceof functions.https.HttpsError)) {
-      functions.logger.error('syncDeepLGlossary: unexpected failure', { showId, error: message })
+      functions.logger.error('syncDeepLGlossary: unexpected failure', {
+        showId,
+        ...formatDeepLError(err),
+      })
+    } else {
+      functions.logger.error('syncDeepLGlossary: failed', { showId, error: message })
     }
 
     try {

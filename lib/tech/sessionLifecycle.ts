@@ -9,7 +9,7 @@
  * Live machine: standby → testing → live → stopping → ended (isDraft separate).
  */
 
-import { FieldPath, FieldValue, type DocumentReference } from 'firebase-admin/firestore'
+import { FieldValue, type DocumentReference } from 'firebase-admin/firestore'
 import {
   getAdminAccessToken,
   getAdminFirestore,
@@ -442,15 +442,12 @@ export async function markSessionEndedFromRecall(opts: {
   if (showId) {
     sessionRef = firestore.doc(`shows/${showId}/sessions/${sessionId}`)
   } else {
-    const sessionsQuery = await firestore
-      .collectionGroup('sessions')
-      .where(FieldPath.documentId(), '==', sessionId)
-      .limit(1)
-      .get()
-    if (!sessionsQuery.empty) {
-      sessionRef = sessionsQuery.docs[0].ref
-      showId = sessionRef.parent.parent?.id ?? null
-    }
+    // collectionGroup + FieldPath.documentId() == bare sessionId does not work
+    // (documentId is the full path). showId should already be on liveSessions.
+    console.warn(
+      '[sessionLifecycle] markSessionEnded: no showId on liveSessions; cannot resolve Firestore session',
+      { sessionId },
+    )
   }
 
   if (sessionRef) {

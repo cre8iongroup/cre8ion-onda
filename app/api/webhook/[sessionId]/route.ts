@@ -155,6 +155,17 @@ export async function POST(request: NextRequest, context: RouteCtx) {
   const rtdbPath = rtdbLiveSessionChunksPath(sessionId)
   const corrections = await loadTextCorrectionsForSession(sessionId)
   const correctedText = applyTextCorrections(normalized.text, corrections)
+  const textChanged = correctedText !== normalized.text
+  if (normalized.isFinal || textChanged || corrections.length > 0) {
+    console.info('[webhook/session] text corrections', {
+      sessionId,
+      isFinal: normalized.isFinal,
+      ruleCount: corrections.length,
+      matched: textChanged,
+      before: normalized.text,
+      after: correctedText,
+    })
+  }
   const payload = {
     text: correctedText,
     speakerLabel: normalized.speaker ?? null,

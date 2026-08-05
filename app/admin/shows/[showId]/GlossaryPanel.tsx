@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { doc, updateDoc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { getClientFirestore, getClientFunctions } from '@/lib/firebase/client'
@@ -48,6 +48,7 @@ function entriesToDraft(entries: GlossaryEntry[] | undefined): DraftRow[] {
       term: e.term ?? '',
       alsoHeardAs,
       heardInput: '',
+      // Collapsed by default when empty; open when variants already exist
       alsoHeardOpen: alsoHeardAs.length > 0,
       es: e.translations?.es ?? '',
       pt: e.translations?.pt ?? '',
@@ -83,6 +84,17 @@ function serializeEntries(entries: GlossaryEntry[]): string {
       fr: e.translations?.fr ?? '',
     })),
   )
+}
+
+const chipStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '2px 8px',
+  border: '1px solid var(--color-border, #e5e5e5)',
+  borderRadius: 999,
+  background: 'var(--color-bg-muted, #f5f5f5)',
+  lineHeight: 1.3,
 }
 
 export default function GlossaryPanel({
@@ -135,8 +147,10 @@ export default function GlossaryPanel({
   function removeHeardVariant(index: number, variant: string) {
     const row = rows[index]
     if (!row) return
+    const nextHeard = row.alsoHeardAs.filter((v) => v !== variant)
     updateRow(index, {
-      alsoHeardAs: row.alsoHeardAs.filter((v) => v !== variant),
+      alsoHeardAs: nextHeard,
+      alsoHeardOpen: nextHeard.length > 0 ? true : row.alsoHeardOpen,
     })
   }
 
@@ -172,30 +186,22 @@ export default function GlossaryPanel({
     draft !== null && serializeEntries(draftToEntries(draft)) !== serverSerialized
 
   return (
-    <div className="card" style={{ padding: 'var(--space-5)' }}>
+    <div className="card" style={{ padding: 'var(--space-4)' }}>
       <p
         className="text-sm"
-        style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}
+        style={{ color: 'var(--color-text-secondary)', margin: '0 0 var(--space-3)' }}
       >
-        Show-specific terms for live caption auto-correct, Deepgram keyterm boosting (best-effort
-        via Recall), and DeepL translation. Saving updates the Show glossary and registers a new
-        DeepL glossary version — translation changes apply to segments translated after sync
-        completes. Re-unlock Operator after save if you changed terms used for live recording.
+        Correct spellings for captions, keyterm boost, and DeepL. Language fields optional
+        (blank → Term).
       </p>
-      <p
-        className="text-sm"
-        style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}
-      >
-        Tip: common English words as “heard as” variants (e.g. Alpha) can false-correct unrelated
-        phrases — keep the list specific to stage usage.
-      </p>
+
       {error && (
-        <div className="alert alert-error" role="alert" style={{ marginBottom: 'var(--space-4)' }}>
+        <div className="alert alert-error" role="alert" style={{ marginBottom: 'var(--space-3)' }}>
           {error}
         </div>
       )}
 
-      <div style={{ display: 'grid', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+      <div style={{ display: 'grid', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
         {rows.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--color-text-muted)', margin: 0 }}>
             No glossary terms yet.
@@ -211,27 +217,31 @@ export default function GlossaryPanel({
                 borderBottom: '1px solid var(--color-border, #e5e5e5)',
               }}
             >
-              <div className="field-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div className="field" style={{ flex: 2, minWidth: 160 }}>
-                  <label className="label">Term</label>
-                  <input
-                    className="input"
-                    value={row.term}
-                    disabled={!canEdit || busy}
-                    placeholder="e.g. ALPFA"
-                    onChange={(e) => updateRow(index, { term: e.target.value })}
-                  />
-                  <p
-                    className="text-sm"
-                    style={{ color: 'var(--color-text-muted)', margin: 'var(--space-1) 0 0' }}
-                  >
-                    Correct spelling. Blank language fields default to this term for DeepL.
-                  </p>
-                </div>
+              {/* Term row — required */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 'var(--space-2)',
+                  alignItems: 'center',
+                }}
+              >
+                <label className="label" style={{ margin: 0, minWidth: 40 }}>
+                  Term
+                </label>
+                <input
+                  className="input"
+                  value={row.term}
+                  disabled={!canEdit || busy}
+                  placeholder="ALPFA"
+                  onChange={(e) => updateRow(index, { term: e.target.value })}
+                  style={{ flex: '1 1 10rem', minWidth: 0, maxWidth: 280 }}
+                  aria-required
+                />
                 {canEdit ? (
                   <button
                     type="button"
-                    className="btn btn-ghost"
+                    className="btn btn-ghost btn-sm"
                     disabled={busy}
                     onClick={() => setRows(rows.filter((_, i) => i !== index))}
                   >
@@ -240,147 +250,141 @@ export default function GlossaryPanel({
                 ) : null}
               </div>
 
-              <div>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  disabled={busy}
-                  onClick={() =>
-                    updateRow(index, { alsoHeardOpen: !row.alsoHeardOpen })
-                  }
-                  aria-expanded={row.alsoHeardOpen}
+              {/* Also-heard: collapsed when empty */}
+              {!row.alsoHeardOpen && row.alsoHeardAs.length === 0 ? (
+                canEdit ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={busy}
+                    onClick={() => updateRow(index, { alsoHeardOpen: true })}
+                    style={{ justifySelf: 'start', paddingLeft: 0 }}
+                  >
+                    + Also heard as
+                  </button>
+                ) : null
+              ) : (
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 'var(--space-1)',
+                  }}
                 >
-                  {row.alsoHeardOpen ? '▾' : '▸'} Auto-correct captions
-                  {row.alsoHeardAs.length > 0 ? ` (${row.alsoHeardAs.length})` : ' (optional)'}
-                </button>
-                {row.alsoHeardOpen ? (
                   <div
                     style={{
-                      marginTop: 'var(--space-2)',
-                      padding: 'var(--space-3)',
-                      border: '1px solid var(--color-border, #e5e5e5)',
-                      borderRadius: 'var(--radius-sm, 6px)',
-                      display: 'grid',
-                      gap: 'var(--space-2)',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: 6,
                     }}
                   >
-                    <p
+                    <span
                       className="text-sm"
-                      style={{ color: 'var(--color-text-muted)', margin: 0 }}
+                      style={{ color: 'var(--color-text-muted)', marginRight: 2 }}
                     >
-                      When Deepgram hears… → corrected to Term
-                    </p>
-                    <div
-                      className="flex gap-2"
-                      style={{ flexWrap: 'wrap', alignItems: 'center' }}
-                    >
-                      {row.alsoHeardAs.map((variant) => (
+                      Heard as
+                    </span>
+                    {row.alsoHeardAs.map((variant) => (
+                      <span key={variant} className="text-sm" style={chipStyle}>
+                        {variant}
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ padding: '0 2px', minHeight: 0, lineHeight: 1 }}
+                            disabled={busy}
+                            aria-label={`Remove ${variant}`}
+                            onClick={() => removeHeardVariant(index, variant)}
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </span>
+                    ))}
+                    {row.alsoHeardAs.length > 0 ? (
+                      <>
                         <span
-                          key={variant}
+                          className="text-sm"
+                          style={{ color: 'var(--color-text-muted)', padding: '0 2px' }}
+                          aria-hidden
+                        >
+                          →
+                        </span>
+                        <span
                           className="text-sm"
                           style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 'var(--space-1)',
-                            padding: '2px 8px',
-                            border: '1px solid var(--color-border, #e5e5e5)',
-                            borderRadius: '999px',
+                            ...chipStyle,
+                            background: 'var(--color-bg, #fff)',
+                            fontWeight: 600,
                           }}
+                          title="Corrects to Term"
                         >
-                          {variant}
-                          {canEdit ? (
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-sm"
-                              style={{ padding: '0 4px', minHeight: 0 }}
-                              disabled={busy}
-                              aria-label={`Remove heard variant ${variant}`}
-                              onClick={() => removeHeardVariant(index, variant)}
-                            >
-                              ×
-                            </button>
-                          ) : null}
+                          {row.term.trim() || 'Term'}
                         </span>
-                      ))}
-                      {row.alsoHeardAs.length > 0 ? (
-                        <>
-                          <span
-                            className="text-sm"
-                            style={{ color: 'var(--color-text-muted)' }}
-                            aria-hidden
-                          >
-                            →
-                          </span>
-                          <span
-                            className="badge badge-muted"
-                            title="Corrected spelling (Term)"
-                          >
-                            {row.term.trim() || 'Term'}
-                          </span>
-                        </>
-                      ) : null}
-                    </div>
-                    {canEdit ? (
-                      <div className="flex gap-2" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
-                        <input
-                          className="input"
-                          value={row.heardInput}
-                          disabled={busy}
-                          placeholder='e.g. Alpha'
-                          onChange={(e) => updateRow(index, { heardInput: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              addHeardVariant(index)
-                            }
-                          }}
-                          style={{ flex: '1 1 12rem', minWidth: 0 }}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          disabled={busy || !row.heardInput.trim()}
-                          onClick={() => addHeardVariant(index)}
-                        >
-                          Add heard as
-                        </button>
-                      </div>
+                      </>
+                    ) : null}
+                    {canEdit && row.alsoHeardAs.length === 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={busy}
+                        onClick={() => updateRow(index, { alsoHeardOpen: false })}
+                        style={{ paddingLeft: 4 }}
+                      >
+                        Collapse
+                      </button>
                     ) : null}
                   </div>
-                ) : null}
-              </div>
+                  {canEdit ? (
+                    <input
+                      className="input"
+                      value={row.heardInput}
+                      disabled={busy}
+                      placeholder="Type a mishearing, Enter to add"
+                      onChange={(e) => updateRow(index, { heardInput: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          addHeardVariant(index)
+                        }
+                      }}
+                      style={{ maxWidth: 280 }}
+                    />
+                  ) : null}
+                </div>
+              )}
 
-              <div className="field-row" style={{ flexWrap: 'wrap' }}>
-                <div className="field" style={{ flex: 1, minWidth: 120 }}>
-                  <label className="label">Spanish</label>
-                  <input
-                    className="input"
-                    value={row.es}
-                    disabled={!canEdit || busy}
-                    placeholder={row.term.trim() || undefined}
-                    onChange={(e) => updateRow(index, { es: e.target.value })}
-                  />
-                </div>
-                <div className="field" style={{ flex: 1, minWidth: 120 }}>
-                  <label className="label">Portuguese</label>
-                  <input
-                    className="input"
-                    value={row.pt}
-                    disabled={!canEdit || busy}
-                    placeholder={row.term.trim() || undefined}
-                    onChange={(e) => updateRow(index, { pt: e.target.value })}
-                  />
-                </div>
-                <div className="field" style={{ flex: 1, minWidth: 120 }}>
-                  <label className="label">French</label>
-                  <input
-                    className="input"
-                    value={row.fr}
-                    disabled={!canEdit || busy}
-                    placeholder={row.term.trim() || undefined}
-                    onChange={(e) => updateRow(index, { fr: e.target.value })}
-                  />
-                </div>
+              {/* Translations — optional, compact */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(7rem, 1fr))',
+                  gap: 'var(--space-2)',
+                }}
+              >
+                {(
+                  [
+                    ['es', 'ES', row.es],
+                    ['pt', 'PT', row.pt],
+                    ['fr', 'FR', row.fr],
+                  ] as const
+                ).map(([field, label, value]) => (
+                  <div key={field} className="field" style={{ margin: 0 }}>
+                    <label className="label" style={{ marginBottom: 2 }}>
+                      {label}{' '}
+                      <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}>
+                        optional
+                      </span>
+                    </label>
+                    <input
+                      className="input"
+                      value={value}
+                      disabled={!canEdit || busy}
+                      placeholder={row.term.trim() || '—'}
+                      onChange={(e) => updateRow(index, { [field]: e.target.value })}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           ))

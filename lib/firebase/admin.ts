@@ -316,8 +316,20 @@ export async function deleteRtdbJson(
   await rtdbRestWrite('DELETE', path, undefined, opts)
 }
 
+/**
+ * Read JSON at an RTDB path via REST GET.
+ * Returns `null` when the path is missing (Firebase REST returns literal `null`).
+ */
+export async function getRtdbJson<T = unknown>(
+  path: string,
+  opts?: { timeoutMs?: number },
+): Promise<T | null> {
+  const result = await rtdbRestWrite('GET', path, undefined, opts)
+  return (result ?? null) as T | null
+}
+
 async function rtdbRestWrite(
-  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   value: unknown,
   opts?: { timeoutMs?: number },
@@ -366,7 +378,8 @@ async function rtdbRestWrite(
     const res = await fetch(url, {
       method,
       headers,
-      body: method === 'DELETE' ? undefined : JSON.stringify(value),
+      body:
+        method === 'DELETE' || method === 'GET' ? undefined : JSON.stringify(value),
       signal: controller.signal,
     })
     const text = await res.text()

@@ -1,8 +1,14 @@
 import * as functions from 'firebase-functions/v1'
 import * as admin from 'firebase-admin'
+import {
+  applyTextCorrections,
+  textCorrectionsFromGlossary,
+  type TextCorrectionRule,
+} from './applyTextCorrections'
 
 if (!admin.apps.length) admin.initializeApp()
 const db = admin.database()
+const firestore = admin.firestore()
 
 interface RecallWord {
   text?: string
@@ -16,6 +22,47 @@ interface NormalizedChunk {
   timestamp: number
   isFinal: boolean
   sequenceNumber?: number
+}
+
+type CacheEntry = { expiresAt: number; rules: TextCorrectionRule[] }
+const CACHE_TTL_MS = 30_000
+const correctionCache = new Map<string, CacheEntry>()
+
+async function loadTextCorrectionsForSession(sessionId: string): Promise<TextCorrectionRule[]> {
+  const now = Date.now()
+  const hit = correctionCache.get(sessionId)
+  if (hit && hit.expiresAt > now) return hit.rules
+
+  try {
+    const sessionsQuery = await firestore
+      .collectionGroup('sessions')
+      .where(admin.firestore.FieldPath.documentId(), '==', sessionId)
+      .limit(1)
+      .get()
+
+    if (sessionsQuery.empty) {
+      correctionCache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules: [] })
+      return []
+    }
+
+    const showRef = sessionsQuery.docs[0].ref.parent.parent
+    if (!showRef) {
+      correctionCache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules: [] })
+      return []
+    }
+
+    const showSnap = await showRef.get()
+    const glossary = showSnap.data()?.glossary
+    const rules = textCorrectionsFromGlossary(Array.isArray(glossary) ? glossary : [])
+    correctionCache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules })
+    return rules
+  } catch (err) {
+    functions.logger.warn('recallWebhook: failed to load text corrections', {
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return hit?.rules ?? []
+  }
 }
 
 /**
@@ -126,11 +173,14 @@ export const recallWebhook = functions.https.onRequest(async (req, res) => {
   }
 
   try {
+    const corrections = await loadTextCorrectionsForSession(normalized.sessionId)
+    const correctedText = applyTextCorrections(normalized.text, corrections)
+
     // Canonical path — must match database.rules.json + Next.js webhook writers
     // (liveSessions/{sessionId}/chunks). Never write to root {sessionId}/chunks.
     const chunksRef = db.ref(`liveSessions/${normalized.sessionId}/chunks`)
     await chunksRef.push({
-      text: normalized.text,
+      text: correctedText,
       speakerLabel: normalized.speaker ?? null,
       timestamp: normalized.timestamp,
       sequenceNumber: normalized.sequenceNumber ?? 0,

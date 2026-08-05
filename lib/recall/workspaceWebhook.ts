@@ -13,6 +13,8 @@
  */
 import { pushRtdbJson } from '@/lib/firebase/admin'
 import { rtdbLiveSessionChunksPath } from '@/lib/rtdbPaths'
+import { applyTextCorrections } from '@/lib/recall/applyTextCorrections'
+import { loadTextCorrectionsForSession } from '@/lib/recall/loadTextCorrectionsForSession'
 import { normalizeToOndaPayload } from '@/lib/recall/normalizeTranscript'
 import {
   RecallAudioRetrieveError,
@@ -255,8 +257,10 @@ export async function handleWorkspaceRecallWebhook(opts: {
 
   // Canonical path — must match database.rules.json + Operator CaptionPreview
   const rtdbPath = rtdbLiveSessionChunksPath(normalized.sessionId)
+  const corrections = await loadTextCorrectionsForSession(normalized.sessionId)
+  const correctedText = applyTextCorrections(normalized.text, corrections)
   const payload = {
-    text: normalized.text,
+    text: correctedText,
     speakerLabel: normalized.speaker ?? null,
     timestamp: normalized.timestamp,
     sequenceNumber: normalized.sequenceNumber ?? 0,

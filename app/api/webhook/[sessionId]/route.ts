@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { pushRtdbJson } from '@/lib/firebase/admin'
 import { rtdbLiveSessionChunksPath } from '@/lib/rtdbPaths'
+import { applyTextCorrections } from '@/lib/recall/applyTextCorrections'
+import { loadTextCorrectionsForSession } from '@/lib/recall/loadTextCorrectionsForSession'
 import { normalizeToOndaPayload } from '@/lib/recall/normalizeTranscript'
 import {
   markSessionEndedFromRecall,
@@ -151,8 +153,10 @@ export async function POST(request: NextRequest, context: RouteCtx) {
   const sessionId = pathSessionId
   // Canonical path — must match database.rules.json + Operator CaptionPreview
   const rtdbPath = rtdbLiveSessionChunksPath(sessionId)
+  const corrections = await loadTextCorrectionsForSession(sessionId)
+  const correctedText = applyTextCorrections(normalized.text, corrections)
   const payload = {
-    text: normalized.text,
+    text: correctedText,
     speakerLabel: normalized.speaker ?? null,
     timestamp: normalized.timestamp,
     sequenceNumber: normalized.sequenceNumber ?? 0,

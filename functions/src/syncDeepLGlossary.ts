@@ -31,7 +31,7 @@ const LANG_PAIRS: Array<{
  *   glossarySyncStatus / glossarySyncError / glossarySyncedAt
  *
  * Note: DeepL requires both source and target terms to be non-empty.
- * Glossary entries with missing translations for a language are skipped for that pair.
+ * Blank language fields default to the English `term` (Term is the anchor spelling).
  */
 export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossaryRequest, context) => {
   // ── 1. Auth check
@@ -115,12 +115,17 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
     await Promise.all(
       LANG_PAIRS.map(async ({ source, target, fieldKey }) => {
         const translationKey = langKeyMap[fieldKey]
+        // Blank translation → default to English term (Term is the anchor spelling).
         const entries = glossaryEntries
-          .filter((e) => e.term?.trim() && e.translations[translationKey]?.trim())
-          .map((e) => ({
-            source: e.term.trim(),
-            target: e.translations[translationKey]!.trim(),
-          }))
+          .filter((e) => e.term?.trim())
+          .map((e) => {
+            const source = e.term.trim()
+            const rawTarget = e.translations?.[translationKey]?.trim() ?? ''
+            return {
+              source,
+              target: rawTarget || source,
+            }
+          })
 
         if (entries.length === 0) {
           functions.logger.warn('syncDeepLGlossary: no entries for pair', { fieldKey, showId })
@@ -190,10 +195,7 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
     const mergedIds: Record<string, string> = { ...previousIds }
 
     for (const { fieldKey } of LANG_PAIRS) {
-      const translationKey = langKeyMap[fieldKey]
-      const hasEntries = glossaryEntries.some(
-        (e) => e.term?.trim() && e.translations[translationKey]?.trim(),
-      )
+      const hasEntries = glossaryEntries.some((e) => e.term?.trim())
       if (newGlossaryIds[fieldKey]) {
         mergedIds[fieldKey] = newGlossaryIds[fieldKey]
       } else if (!hasEntries) {

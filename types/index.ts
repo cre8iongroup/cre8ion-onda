@@ -50,6 +50,13 @@ export interface UserDoc {
 
 export interface GlossaryEntry {
   term: string
+  /**
+   * Optional mis-transcription variants Deepgram may emit for this term
+   * (e.g. term "ALPFA" → alsoHeardAs ["Alpha", "Alpha Familia"]).
+   * Used for English caption text corrections before RTDB write.
+   * Not sent to DeepL; not used as Deepgram keyterm prompts.
+   */
+  alsoHeardAs?: string[]
   translations: {
     es?: string
     pt?: string
@@ -186,10 +193,9 @@ export interface ShowDoc {
    */
   transcriptionStyle: TranscriptionStyle
   /**
-   * Short list of Deepgram keyterm prompts (Nova-3) for stage-specific terms
-   * the model struggles with (e.g. "ALPFA"). Applied at Operator recording-start
-   * via deepgram_streaming.keyterm. Empty/missing → omit keyterm from config.
-   * Keep short — boost only terms that need help, not a full glossary.
+   * Optional denormalized Deepgram keyterm list. Prefer deriving at Operator
+   * unlock from glossary[].term (see deepgramKeytermsFromGlossary). Kept for
+   * backward compatibility; Admin no longer edits this field directly.
    */
   deepgramKeyterms?: string[]
   /**

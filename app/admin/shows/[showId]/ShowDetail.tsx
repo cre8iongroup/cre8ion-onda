@@ -18,6 +18,7 @@ import CreateSessionModal from './CreateSessionModal'
 import LegalNoticePanel from './LegalNoticePanel'
 import OperatorSettingsPanel from './OperatorSettingsPanel'
 import RoomsPanel, { collectSessionRoomIds } from './RoomsPanel'
+import SessionsPanel from './SessionsPanel'
 import TechCredentialPanel from './TechCredentialPanel'
 import BrandingPanel from './BrandingPanel'
 import ShowLinksPanel from './ShowLinksPanel'
@@ -27,29 +28,14 @@ import LanguagesPanel from './LanguagesPanel'
 import GlossaryPanel from './GlossaryPanel'
 import QrCodesTab from './QrCodesTab'
 import { showPublicUrl } from '@/lib/attendee/urls'
-import {
-  canHideSession,
-  sessionStatusBadgeClass,
-  sessionStatusLabel,
-} from '@/lib/sessionStatus'
-import { resolveRoomName } from '@/lib/rooms'
+import { canHideSession } from '@/lib/sessionStatus'
 
-type ShowTab = 'overview' | 'glossary' | 'branding' | 'rooms' | 'qr' | 'tech'
+type ShowTab = 'overview' | 'glossary' | 'branding' | 'rooms' | 'sessions' | 'qr' | 'tech'
 
 function formatDateRange(start?: Timestamp, end?: Timestamp): string {
   if (!start || !end) return 'Dates TBD'
   const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' }
   return `${start.toDate().toLocaleDateString(undefined, opts)} – ${end.toDate().toLocaleDateString(undefined, opts)}`
-}
-
-function formatDateTime(ts?: Timestamp): string {
-  if (!ts) return '—'
-  return ts.toDate().toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
 }
 
 export default function ShowDetail({ showId }: { showId: string }) {
@@ -77,7 +63,8 @@ export default function ShowDetail({ showId }: { showId: string }) {
     if (canEditShows) list.push({ id: 'overview', label: 'Overview' })
     if (canEditShows) list.push({ id: 'glossary', label: 'Glossary' })
     if (canManageBranding) list.push({ id: 'branding', label: 'Branding' })
-    if (canEditShows) list.push({ id: 'rooms', label: 'Rooms and sessions' })
+    if (canEditShows) list.push({ id: 'rooms', label: 'Rooms' })
+    if (canEditShows) list.push({ id: 'sessions', label: 'Sessions' })
     if (canDownloadQr) list.push({ id: 'qr', label: 'QR codes' })
     if (canManageTech) list.push({ id: 'tech', label: 'Tech' })
     return list
@@ -95,7 +82,6 @@ export default function ShowDetail({ showId }: { showId: string }) {
   }, [tabs])
 
   const rooms = show?.rooms ?? []
-  const hasRooms = rooms.length > 0
   const sessionRoomIds = collectSessionRoomIds(sessions)
 
   async function toggleDraft(session: WithId<SessionDoc>) {
@@ -314,7 +300,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
             )}
           </p>
         </div>
-        {canEditShows && activeTab === 'rooms' ? (
+        {canEditShows && activeTab === 'sessions' ? (
           <button
             id="btn-create-session"
             type="button"
@@ -454,92 +440,33 @@ export default function ShowDetail({ showId }: { showId: string }) {
       ) : null}
 
       {activeTab === 'rooms' ? (
-        <>
-          <section style={{ marginBottom: 'var(--space-10)' }}>
-            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Rooms</h2>
-            <RoomsPanel
-              showId={show.id}
-              rooms={rooms}
-              sessionRoomIds={sessionRoomIds}
-              canEdit={canEditShows}
-              onFlash={setFlash}
-            />
-          </section>
-          <section>
-            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Sessions</h2>
-            {loadingSessions ? (
-              <div className="flex items-center justify-center" style={{ padding: 'var(--space-12)' }}>
-                <span className="spinner" aria-label="Loading sessions" />
-              </div>
-            ) : !hasRooms && sessions.length === 0 ? (
-              <div className="card" style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
-                <h3 style={{ fontSize: 'var(--text-md)' }}>Add a room before creating sessions</h3>
-              </div>
-            ) : sessions.length === 0 ? (
-              <div className="card" style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
-                <h3 style={{ fontSize: 'var(--text-md)' }}>No sessions yet</h3>
-              </div>
-            ) : (
-              <div className="show-list">
-                {sessions.map((session) => (
-                  <article key={session.id} id={`session-${session.id}`} className="card show-list-item">
-                    <div className="flex items-center justify-between gap-4" style={{ flexWrap: 'wrap' }}>
-                      <div>
-                        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>
-                          <Link href={`/admin/shows/${showId}/sessions/${session.id}`}>
-                            {session.title}
-                          </Link>
-                        </h3>
-                        <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                          {session.friendlyName}
-                          {` · ${resolveRoomName(rooms, session.roomId)}`}
-                        </p>
-                        <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
-                          {formatDateTime(session.scheduledStart)} – {formatDateTime(session.scheduledEnd)}
-                        </p>
-                      </div>
-                      <div className="flex gap-2" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span
-                          className={`badge ${sessionStatusBadgeClass({
-                            isDraft: session.isDraft,
-                            feedState: session.feedState,
-                          })}`}
-                        >
-                          {sessionStatusLabel(
-                            { isDraft: session.isDraft, feedState: session.feedState },
-                            'admin',
-                          )}
-                        </span>
-                        <Link
-                          href={`/admin/shows/${showId}/sessions/${session.id}`}
-                          className="btn btn-secondary btn-sm"
-                        >
-                          Edit
-                        </Link>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          disabled={draftBusyId === session.id || resetBusyId === session.id}
-                          onClick={() => toggleDraft(session)}
-                        >
-                          {session.isDraft ? 'Make visible' : 'Hide'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          disabled={draftBusyId === session.id || resetBusyId === session.id}
-                          onClick={() => resetSession(session)}
-                        >
-                          {resetBusyId === session.id ? 'Resetting…' : 'Reset session'}
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-        </>
+        <section>
+          <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Rooms</h2>
+          <RoomsPanel
+            showId={show.id}
+            rooms={rooms}
+            sessionRoomIds={sessionRoomIds}
+            canEdit={canEditShows}
+            onFlash={setFlash}
+          />
+        </section>
+      ) : null}
+
+      {activeTab === 'sessions' ? (
+        <section>
+          <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Sessions</h2>
+          <SessionsPanel
+            showId={show.id}
+            rooms={rooms}
+            sessions={sessions}
+            loading={loadingSessions}
+            canEdit={canEditShows}
+            draftBusyId={draftBusyId}
+            resetBusyId={resetBusyId}
+            onToggleDraft={toggleDraft}
+            onResetSession={resetSession}
+          />
+        </section>
       ) : null}
 
       {activeTab === 'qr' ? (

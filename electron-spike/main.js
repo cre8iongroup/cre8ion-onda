@@ -432,7 +432,18 @@ async function startRecording() {
     })
     activeUploadId = upload.id
     activeRecordingId = upload.recordingId
-    sendLog('info', 'sdk_upload created', upload)
+    // Surface the exact deepgram_streaming object POSTed (values, not just a count).
+    sendLog('info', 'sdk_upload outbound deepgram_streaming', {
+      deepgramStreaming: upload.deepgramStreaming || null,
+      keyterm: upload.deepgramKeyterm ?? null,
+      keytermJson: JSON.stringify(upload.deepgramKeyterm ?? null),
+      presetId: upload.deepgramPreset || null,
+    })
+    sendLog('info', 'sdk_upload created', {
+      id: upload.id,
+      recordingId: upload.recordingId,
+      deepgramPreset: upload.deepgramPreset,
+    })
     sendStatus({
       uploadId: upload.id,
       recordingId: upload.recordingId,

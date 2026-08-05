@@ -259,6 +259,17 @@ export async function handleWorkspaceRecallWebhook(opts: {
   const rtdbPath = rtdbLiveSessionChunksPath(normalized.sessionId)
   const corrections = await loadTextCorrectionsForSession(normalized.sessionId)
   const correctedText = applyTextCorrections(normalized.text, corrections)
+  const textChanged = correctedText !== normalized.text
+  if (normalized.isFinal || textChanged || corrections.length > 0) {
+    console.info('[recall/webhook] text corrections', {
+      sessionId: normalized.sessionId,
+      isFinal: normalized.isFinal,
+      ruleCount: corrections.length,
+      matched: textChanged,
+      before: normalized.text,
+      after: correctedText,
+    })
+  }
   const payload = {
     text: correctedText,
     speakerLabel: normalized.speaker ?? null,

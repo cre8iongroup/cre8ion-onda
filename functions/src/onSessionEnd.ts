@@ -10,7 +10,7 @@ const firestore = admin.firestore()
  *
  * When feedState transitions to 'ended':
  *   1. Reads all chunks from /liveSessions/{sessionId}/chunks
- *   2. Finds the parent show via collectionGroup query on sessions
+ *   2. Resolves showId from RTDB liveSessions/{sessionId}.showId
  *   3. Writes all chunks to Firestore at shows/{showId}/sessions/{sessionId}/transcripts/
  *      ordered by sequenceNumber
  *   4. Sets session feedState to 'ended'
@@ -36,21 +36,28 @@ export const onSessionEnd = functions.database
         functions.logger.warn('onSessionEnd: no chunks found in RTDB', { sessionId })
       }
 
-      // ── 2. Find parent show via collectionGroup
-      const sessionsQuery = await firestore
-        .collectionGroup('sessions')
-        .where(admin.firestore.FieldPath.documentId(), '==', sessionId)
-        .limit(1)
-        .get()
+      // ── 2. Resolve show via RTDB liveSessions.showId (not broken collectionGroup documentId)
+      const liveSnap = await db.ref(`/liveSessions/${sessionId}`).get()
+      const liveMeta = liveSnap.val() as { showId?: string } | null
+      const showId =
+        typeof liveMeta?.showId === 'string' && liveMeta.showId.trim()
+          ? liveMeta.showId.trim()
+          : null
 
-      if (sessionsQuery.empty) {
-        functions.logger.error('onSessionEnd: session not found in Firestore', { sessionId })
+      if (!showId) {
+        functions.logger.error('onSessionEnd: no showId on live session', { sessionId })
         return null
       }
 
-      const sessionRef = sessionsQuery.docs[0].ref
-      const showRef = sessionRef.parent.parent!
-      const showId = showRef.id
+      const sessionRef = firestore.doc(`shows/${showId}/sessions/${sessionId}`)
+      const sessionSnap = await sessionRef.get()
+      if (!sessionSnap.exists) {
+        functions.logger.error('onSessionEnd: session not found in Firestore', {
+          sessionId,
+          showId,
+        })
+        return null
+      }
 
       // ── 3. Batch write chunks to Firestore transcripts subcollection
       if (rawChunks) {

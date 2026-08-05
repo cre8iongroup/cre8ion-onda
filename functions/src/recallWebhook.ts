@@ -24,37 +24,64 @@ interface NormalizedChunk {
   sequenceNumber?: number
 }
 
-type CacheEntry = { expiresAt: number; rules: TextCorrectionRule[] }
+type CacheEntry = { expiresAt: number; rules: TextCorrectionRule[]; showId: string }
 const CACHE_TTL_MS = 30_000
 const correctionCache = new Map<string, CacheEntry>()
+
+/**
+ * Resolve showId from RTDB liveSessions/{sessionId}.
+ * Avoids collectionGroup + documentId(sessionId) which never matches nested paths.
+ */
+async function resolveShowIdForSession(sessionId: string): Promise<string | null> {
+  const liveSnap = await db.ref(`liveSessions/${sessionId}`).get()
+  const liveMeta = liveSnap.val() as { showId?: string } | null
+  const showId =
+    typeof liveMeta?.showId === 'string' && liveMeta.showId.trim()
+      ? liveMeta.showId.trim()
+      : null
+  return showId
+}
 
 async function loadTextCorrectionsForSession(sessionId: string): Promise<TextCorrectionRule[]> {
   const now = Date.now()
   const hit = correctionCache.get(sessionId)
-  if (hit && hit.expiresAt > now) return hit.rules
+  if (hit && hit.expiresAt > now) {
+    functions.logger.info('recallWebhook: text corrections cache hit', {
+      sessionId,
+      showId: hit.showId,
+      ruleCount: hit.rules.length,
+    })
+    return hit.rules
+  }
 
   try {
-    const sessionsQuery = await firestore
-      .collectionGroup('sessions')
-      .where(admin.firestore.FieldPath.documentId(), '==', sessionId)
-      .limit(1)
-      .get()
-
-    if (sessionsQuery.empty) {
-      correctionCache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules: [] })
+    const showId = await resolveShowIdForSession(sessionId)
+    if (!showId) {
+      functions.logger.warn('recallWebhook: no showId on live session for corrections', {
+        sessionId,
+      })
       return []
     }
 
-    const showRef = sessionsQuery.docs[0].ref.parent.parent
-    if (!showRef) {
-      correctionCache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules: [] })
+    const showSnap = await firestore.doc(`shows/${showId}`).get()
+    if (!showSnap.exists) {
+      functions.logger.warn('recallWebhook: show missing for corrections', { sessionId, showId })
       return []
     }
 
-    const showSnap = await showRef.get()
     const glossary = showSnap.data()?.glossary
-    const rules = textCorrectionsFromGlossary(Array.isArray(glossary) ? glossary : [])
-    correctionCache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules })
+    const glossaryEntries = Array.isArray(glossary) ? glossary : []
+    const rules = textCorrectionsFromGlossary(glossaryEntries)
+
+    functions.logger.info('recallWebhook: text corrections loaded', {
+      sessionId,
+      showId,
+      glossaryEntryCount: glossaryEntries.length,
+      ruleCount: rules.length,
+      rules: rules.map((r) => `${r.from}→${r.to}`),
+    })
+
+    correctionCache.set(sessionId, { expiresAt: now + CACHE_TTL_MS, rules, showId })
     return rules
   } catch (err) {
     functions.logger.warn('recallWebhook: failed to load text corrections', {
@@ -175,6 +202,17 @@ export const recallWebhook = functions.https.onRequest(async (req, res) => {
   try {
     const corrections = await loadTextCorrectionsForSession(normalized.sessionId)
     const correctedText = applyTextCorrections(normalized.text, corrections)
+    const textChanged = correctedText !== normalized.text
+    if (normalized.isFinal || textChanged || corrections.length > 0) {
+      functions.logger.info('recallWebhook: text corrections', {
+        sessionId: normalized.sessionId,
+        isFinal: normalized.isFinal,
+        ruleCount: corrections.length,
+        matched: textChanged,
+        before: normalized.text,
+        after: correctedText,
+      })
+    }
 
     // Canonical path — must match database.rules.json + Next.js webhook writers
     // (liveSessions/{sessionId}/chunks). Never write to root {sessionId}/chunks.

@@ -33,7 +33,8 @@ export function textCorrectionsFromGlossary(
       if (!from) continue
       const key = from.toLowerCase()
       if (seenFrom.has(key)) continue
-      if (key === to.toLowerCase()) continue
+      // Skip exact no-ops; allow case-only fixes (alpfa → ALPFA)
+      if (from === to) continue
       seenFrom.add(key)
       rules.push({ from, to })
     }

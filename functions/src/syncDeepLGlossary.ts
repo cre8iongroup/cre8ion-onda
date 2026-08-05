@@ -1,13 +1,9 @@
-import * as crypto from 'crypto'
 import * as functions from 'firebase-functions/v1'
 import * as admin from 'firebase-admin'
 import * as deepl from 'deepl-node'
 
 if (!admin.apps.length) admin.initializeApp()
 const firestore = admin.firestore()
-
-/** TEMP diagnostic: true until first syncDeepLGlossary invocation on this instance. */
-let syncDeepLGlossaryColdStart = true
 
 interface SyncGlossaryRequest {
   showId: string
@@ -141,25 +137,8 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
     throw new functions.https.HttpsError('internal', 'DEEPL_API_KEY not configured')
   }
 
-  // TEMP diagnostic — compare against local sha256(known-good key); never log raw key.
-  const keySha256 = crypto.createHash('sha256').update(apiKey).digest('hex')
-  const coldStart = syncDeepLGlossaryColdStart
-  syncDeepLGlossaryColdStart = false
-
-  functions.logger.info('syncDeepLGlossary: TEMP key fingerprint', {
-    showId,
-    keySha256,
-    coldStart,
-    functionTarget: process.env.FUNCTION_TARGET ?? null,
-    functionName: process.env.FUNCTION_NAME ?? null,
-    kService: process.env.K_SERVICE ?? null,
-    ...keyDiag,
-  })
-
   functions.logger.info('syncDeepLGlossary: DEEPL_API_KEY present', {
     showId,
-    keySha256,
-    coldStart,
     ...keyDiag,
     // Never log the full key
   })
@@ -193,8 +172,6 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
       const usage = await translator.getUsage()
       functions.logger.info('syncDeepLGlossary: DeepL getUsage OK', {
         showId,
-        keySha256,
-        coldStart,
         characterCount: usage.character?.count ?? null,
         characterLimit: usage.character?.limit ?? null,
         inferredHost: keyDiag.inferredHost,
@@ -203,8 +180,6 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
       const formatted = formatDeepLError(err)
       functions.logger.error('syncDeepLGlossary: DeepL auth rejected (getUsage)', {
         showId,
-        keySha256,
-        coldStart,
         ...keyDiag,
         ...formatted,
       })
@@ -247,28 +222,6 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
     const newGlossaryIds: Record<string, string> = {}
     const pairErrors: Array<{ fieldKey: string; error: string }> = []
 
-    // TEMP: re-probe usage immediately before cleanup/create in this same invocation.
-    try {
-      const usagePreCleanup = await translator.getUsage()
-      functions.logger.info('syncDeepLGlossary: TEMP pre-cleanup getUsage OK', {
-        showId,
-        keySha256,
-        coldStart,
-        characterCount: usagePreCleanup.character?.count ?? null,
-        characterLimit: usagePreCleanup.character?.limit ?? null,
-        inferredHost: keyDiag.inferredHost,
-      })
-    } catch (err) {
-      const formatted = formatDeepLError(err)
-      functions.logger.error('syncDeepLGlossary: TEMP pre-cleanup getUsage FAILED', {
-        showId,
-        keySha256,
-        coldStart,
-        ...keyDiag,
-        ...formatted,
-      })
-    }
-
     // ── 4. Register glossary per language pair
     await Promise.all(
       LANG_PAIRS.map(async ({ source, target, fieldKey }) => {
@@ -303,8 +256,6 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
             functions.logger.warn('syncDeepLGlossary: could not clean up old glossary', {
               fieldKey,
               showId,
-              keySha256,
-              coldStart,
               ...formatted,
             })
           }
@@ -327,8 +278,6 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
             glossaryId: glossary.glossaryId,
             entryCount: entries.length,
             showId,
-            keySha256,
-            coldStart,
           })
         } catch (err) {
           const formatted = formatDeepLError(err)
@@ -338,8 +287,6 @@ export const syncDeepLGlossary = functions.https.onCall(async (data: SyncGlossar
             showId,
             entryCount: entries.length,
             inferredHost: keyDiag.inferredHost,
-            keySha256,
-            coldStart,
             ...formatted,
           })
         }

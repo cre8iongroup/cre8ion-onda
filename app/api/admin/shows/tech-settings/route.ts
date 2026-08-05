@@ -5,13 +5,20 @@ import {
   requireTechManageCapability,
 } from '@/lib/admin/requireAdminUser'
 import { getAdminFirestore } from '@/lib/firebase/admin'
+import { normalizeDeepgramKeyterms } from '@/lib/recall/deepgramStreamingPresets'
 import type { TranscriptionStyle } from '@/types'
 
 export const runtime = 'nodejs'
 
 /**
  * POST /api/admin/shows/tech-settings
- * Body: { showId, techCredential?, transcriptionStyle?, operatorInstructions? }
+ * Body: {
+ *   showId,
+ *   techCredential?,
+ *   transcriptionStyle?,
+ *   operatorInstructions?,
+ *   deepgramKeyterms?: string[],
+ * }
  *
  * Requires canManageTech (independent of canEditShows / baseRole editor).
  * Writes via Admin SDK — client Firestore rules deny these fields on update.
@@ -63,6 +70,17 @@ export async function POST(request: NextRequest) {
 
     if (typeof body?.operatorInstructions === 'string') {
       updates.operatorInstructions = body.operatorInstructions
+    }
+
+    if (Array.isArray(body?.deepgramKeyterms)) {
+      const invalid = body.deepgramKeyterms.some((t) => typeof t !== 'string')
+      if (invalid) {
+        return NextResponse.json(
+          { error: 'deepgramKeyterms must be an array of strings' },
+          { status: 400 },
+        )
+      }
+      updates.deepgramKeyterms = normalizeDeepgramKeyterms(body.deepgramKeyterms as string[])
     }
 
     if (Object.keys(updates).length === 0) {

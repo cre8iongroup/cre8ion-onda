@@ -82,7 +82,7 @@ const CONFIG = {
   ),
 }
 
-/** @type {{ credential: string, showId: string, showName: string, sessionId: string, sessionLabel: string, feedState: string, webhookUrl: string } | null} */
+/** @type {{ credential: string, showId: string, showName: string, sessionId: string, sessionLabel: string, feedState: string, webhookUrl: string, transcriptionStyle?: string, deepgramKeyterms?: string[] } | null} */
 let activeContext = null
 
 let mainWindow = null
@@ -428,6 +428,7 @@ async function startRecording() {
       languageCode: CONFIG.languageCode,
       publicWebhookUrl,
       transcriptionStyle: activeContext.transcriptionStyle || null,
+      deepgramKeyterms: activeContext.deepgramKeyterms || null,
     })
     activeUploadId = upload.id
     activeRecordingId = upload.recordingId
@@ -758,10 +759,17 @@ ipcMain.handle('spike:unlock', async (_evt, credential) => {
 })
 
 ipcMain.handle('spike:select-session', async (_evt, payload) => {
-  const { credential, showId, showName, session, transcriptionStyle } = payload || {}
+  const { credential, showId, showName, session, transcriptionStyle, deepgramKeyterms } =
+    payload || {}
   if (!credential || !showId || !session?.id) {
     return { ok: false, error: 'Missing credential, showId, or session' }
   }
+  const keyterms = Array.isArray(deepgramKeyterms)
+    ? deepgramKeyterms
+        .filter((t) => typeof t === 'string')
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0)
+    : []
   activeContext = {
     credential,
     showId,
@@ -775,6 +783,7 @@ ipcMain.handle('spike:select-session', async (_evt, payload) => {
       transcriptionStyle === 'lightweight' || transcriptionStyle === 'standard'
         ? transcriptionStyle
         : 'standard',
+    deepgramKeyterms: keyterms,
   }
   sequenceNumber = 0
   sendLog('info', 'Session selected', {
@@ -782,6 +791,7 @@ ipcMain.handle('spike:select-session', async (_evt, payload) => {
     feedState: activeContext.feedState,
     webhookUrl: activeContext.webhookUrl,
     transcriptionStyle: activeContext.transcriptionStyle,
+    deepgramKeytermCount: keyterms.length,
   })
   sendStatus({
     showId: activeContext.showId,

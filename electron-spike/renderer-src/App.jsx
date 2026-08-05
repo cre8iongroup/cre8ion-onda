@@ -495,12 +495,19 @@ export default function App() {
     }
     setSelectedSessionId(target.id)
     const spike = getOndaSpike()
+    const keyterms = Array.isArray(show.deepgramKeyterms)
+      ? show.deepgramKeyterms
+          .filter((t) => typeof t === 'string')
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0)
+      : []
     const result = await spike.selectSession({
       credential,
       showId: show.id,
       showName: show.name,
       session: target,
       transcriptionStyle: show.transcriptionStyle === 'lightweight' ? 'lightweight' : 'standard',
+      deepgramKeyterms: keyterms,
     })
     if (!result.ok) {
       setSessionError(result.error || 'Could not select session')

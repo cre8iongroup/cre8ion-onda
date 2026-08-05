@@ -69,7 +69,7 @@ service cloud.firestore {
       allow update: if isAdminOrEditor()
         && isAssignedToShow(showId)
         && !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['techCredential', 'operatorInstructions', 'transcriptionStyle']);
+            .hasAny(['techCredential', 'operatorInstructions', 'transcriptionStyle', 'deepgramKeyterms']);
       allow delete: if isAdmin();
 
       // Rooms subcollection (Phase 5) — Contributor read-only for QR UI

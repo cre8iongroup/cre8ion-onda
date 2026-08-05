@@ -16,6 +16,7 @@ async function createSdkUpload({
   languageCode = 'en',
   publicWebhookUrl = null,
   transcriptionStyle = null,
+  deepgramKeyterms = null,
 }) {
   const realtimeEndpoints = [
     {
@@ -35,15 +36,20 @@ async function createSdkUpload({
   }
 
   // Show transcriptionStyle → preset; missing style falls through to env/JSON active.
+  // Show deepgramKeyterms → deepgram_streaming.keyterm when non-empty.
   const mappedPreset = presetIdForTranscriptionStyle(transcriptionStyle)
   const dg = buildDeepgramStreamingConfig({
     language: languageCode || 'en',
     presetId: mappedPreset ?? undefined,
+    keyterms: deepgramKeyterms,
   })
   console.info('[recallApi] deepgram_streaming preset', {
     transcriptionStyle: transcriptionStyle || null,
     presetId: dg.presetId,
     label: dg.label,
+    keytermCount: Array.isArray(dg.deepgram_streaming.keyterm)
+      ? dg.deepgram_streaming.keyterm.length
+      : 0,
   })
 
   const body = {

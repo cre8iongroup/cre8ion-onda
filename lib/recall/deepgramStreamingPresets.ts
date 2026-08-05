@@ -12,6 +12,8 @@
  * Style changes apply at Operator unlock / recording-start — re-unlock or
  * restart Operator after Admin changes mid-show. Do not change model/language
  * here — callers pass those.
+ *
+ * Optional show.deepgramKeyterms → deepgram_streaming.keyterm (string[]).
  */
 
 import presetsFile from './deepgramStreamingPresets.json'
@@ -21,6 +23,9 @@ export type DeepgramStreamingPresetId =
   | 'baseline'
   | 'punctuate'
   | 'punctuate_endpointing'
+
+/** Values allowed on deepgram_streaming (preset scalars + keyterm array). */
+export type DeepgramStreamingOptionValue = string | number | boolean | string[]
 
 /** Single source of truth: Admin Transcription style → Deepgram preset id. */
 export const TRANSCRIPTION_STYLE_TO_PRESET: Record<
@@ -73,25 +78,46 @@ export function resolveDeepgramStreamingPresetId(
   return 'baseline'
 }
 
+/** Trim, drop empties, de-dupe (case-sensitive — Deepgram treats terms as-is). */
+export function normalizeDeepgramKeyterms(raw?: string[] | null): string[] {
+  if (!Array.isArray(raw) || raw.length === 0) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const term = item.trim()
+    if (!term || seen.has(term)) continue
+    seen.add(term)
+    out.push(term)
+  }
+  return out
+}
+
 export function buildDeepgramStreamingConfig(opts: {
   language: string
   presetId?: string | null
+  keyterms?: string[] | null
 }): {
   presetId: DeepgramStreamingPresetId
   label: string
   notes: string
-  deepgram_streaming: Record<string, string | number | boolean>
+  deepgram_streaming: Record<string, DeepgramStreamingOptionValue>
 } {
   const presetId = resolveDeepgramStreamingPresetId(opts.presetId)
   const preset = file.presets[presetId]
+  const keyterms = normalizeDeepgramKeyterms(opts.keyterms)
+  const deepgram_streaming: Record<string, DeepgramStreamingOptionValue> = {
+    model: 'nova-3',
+    language: opts.language || 'en',
+    ...preset.options,
+  }
+  if (keyterms.length > 0) {
+    deepgram_streaming.keyterm = keyterms
+  }
   return {
     presetId,
     label: preset.label,
     notes: preset.notes,
-    deepgram_streaming: {
-      model: 'nova-3',
-      language: opts.language || 'en',
-      ...preset.options,
-    },
+    deepgram_streaming,
   }
 }

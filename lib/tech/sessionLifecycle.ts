@@ -18,6 +18,7 @@ import {
   updateRtdbJson,
 } from '@/lib/firebase/admin'
 import { rtdbLiveSessionPath, rtdbRecordingIndexPath } from '@/lib/rtdbPaths'
+import { deepgramKeytermsFromGlossary } from '@/lib/recall/applyTextCorrections'
 import type { FeedState, SessionDoc, ShowDoc, ShowRoom, TranscriptionStyle } from '@/types'
 import { resolveRoomName } from '@/lib/rooms'
 
@@ -41,7 +42,7 @@ export type UnlockedShow = {
   portalURL: string | null
   /** Deepgram style for recording-start; defaults to standard if missing on older docs. */
   transcriptionStyle: TranscriptionStyle
-  /** Deepgram keyterm prompts for recording-start; empty when missing on older docs. */
+  /** Deepgram keyterm prompts — derived at unlock from glossary `term` values. */
   deepgramKeyterms: string[]
   /** Markdown source for Operator UI; null when empty/missing. */
   operatorInstructions: string | null
@@ -151,12 +152,9 @@ export async function unlockShowByCredential(
       ? showData.operatorInstructions.trim()
       : ''
 
-  const deepgramKeyterms = Array.isArray(showData.deepgramKeyterms)
-    ? showData.deepgramKeyterms
-        .filter((t): t is string => typeof t === 'string')
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0)
-    : []
+  const deepgramKeyterms = deepgramKeytermsFromGlossary(
+    Array.isArray(showData.glossary) ? showData.glossary : [],
+  )
 
   return {
     show: {

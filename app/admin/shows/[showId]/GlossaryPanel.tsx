@@ -9,6 +9,9 @@ import type { GlossaryEntry } from '@/types'
 type DraftRow = {
   key: string
   term: string
+  alsoHeardAs: string[]
+  heardInput: string
+  alsoHeardOpen: boolean
   es: string
   pt: string
   fr: string
@@ -20,27 +23,53 @@ function newKey(): string {
   return `row-${rowSeq}`
 }
 
+function normalizeHeardList(raw: string[] | undefined): string[] {
+  if (!Array.isArray(raw) || raw.length === 0) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const v = item.trim()
+    if (!v) continue
+    const key = v.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(v)
+  }
+  return out
+}
+
 function entriesToDraft(entries: GlossaryEntry[] | undefined): DraftRow[] {
   if (!Array.isArray(entries) || entries.length === 0) return []
-  return entries.map((e) => ({
-    key: newKey(),
-    term: e.term ?? '',
-    es: e.translations?.es ?? '',
-    pt: e.translations?.pt ?? '',
-    fr: e.translations?.fr ?? '',
-  }))
+  return entries.map((e) => {
+    const alsoHeardAs = normalizeHeardList(e.alsoHeardAs)
+    return {
+      key: newKey(),
+      term: e.term ?? '',
+      alsoHeardAs,
+      heardInput: '',
+      alsoHeardOpen: alsoHeardAs.length > 0,
+      es: e.translations?.es ?? '',
+      pt: e.translations?.pt ?? '',
+      fr: e.translations?.fr ?? '',
+    }
+  })
 }
 
 function draftToEntries(rows: DraftRow[]): GlossaryEntry[] {
   return rows
-    .map((r) => ({
-      term: r.term.trim(),
-      translations: {
-        ...(r.es.trim() ? { es: r.es.trim() } : {}),
-        ...(r.pt.trim() ? { pt: r.pt.trim() } : {}),
-        ...(r.fr.trim() ? { fr: r.fr.trim() } : {}),
-      },
-    }))
+    .map((r) => {
+      const alsoHeardAs = normalizeHeardList(r.alsoHeardAs)
+      return {
+        term: r.term.trim(),
+        ...(alsoHeardAs.length > 0 ? { alsoHeardAs } : {}),
+        translations: {
+          ...(r.es.trim() ? { es: r.es.trim() } : {}),
+          ...(r.pt.trim() ? { pt: r.pt.trim() } : {}),
+          ...(r.fr.trim() ? { fr: r.fr.trim() } : {}),
+        },
+      }
+    })
     .filter((e) => e.term.length > 0)
 }
 
@@ -48,6 +77,7 @@ function serializeEntries(entries: GlossaryEntry[]): string {
   return JSON.stringify(
     entries.map((e) => ({
       term: e.term,
+      alsoHeardAs: normalizeHeardList(e.alsoHeardAs),
       es: e.translations?.es ?? '',
       pt: e.translations?.pt ?? '',
       fr: e.translations?.fr ?? '',
@@ -91,6 +121,25 @@ export default function GlossaryPanel({
     setRows(next)
   }
 
+  function addHeardVariant(index: number) {
+    const row = rows[index]
+    if (!row) return
+    const nextHeard = normalizeHeardList([...row.alsoHeardAs, row.heardInput])
+    updateRow(index, {
+      alsoHeardAs: nextHeard,
+      heardInput: '',
+      alsoHeardOpen: true,
+    })
+  }
+
+  function removeHeardVariant(index: number, variant: string) {
+    const row = rows[index]
+    if (!row) return
+    updateRow(index, {
+      alsoHeardAs: row.alsoHeardAs.filter((v) => v !== variant),
+    })
+  }
+
   async function save() {
     if (!canEdit) return
     setBusy(true)
@@ -128,9 +177,17 @@ export default function GlossaryPanel({
         className="text-sm"
         style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}
       >
-        Preferred translations for show-specific terms. Saving updates the Show glossary and
-        registers a new DeepL glossary version — changes apply to segments translated after sync
-        completes.
+        Show-specific terms for live caption auto-correct, Deepgram keyterm boosting (best-effort
+        via Recall), and DeepL translation. Saving updates the Show glossary and registers a new
+        DeepL glossary version — translation changes apply to segments translated after sync
+        completes. Re-unlock Operator after save if you changed terms used for live recording.
+      </p>
+      <p
+        className="text-sm"
+        style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}
+      >
+        Tip: common English words as “heard as” variants (e.g. Alpha) can false-correct unrelated
+        phrases — keep the list specific to stage usage.
       </p>
       {error && (
         <div className="alert alert-error" role="alert" style={{ marginBottom: 'var(--space-4)' }}>
@@ -156,13 +213,20 @@ export default function GlossaryPanel({
             >
               <div className="field-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
                 <div className="field" style={{ flex: 2, minWidth: 160 }}>
-                  <label className="label">English term</label>
+                  <label className="label">Term</label>
                   <input
                     className="input"
                     value={row.term}
                     disabled={!canEdit || busy}
+                    placeholder="e.g. ALPFA"
                     onChange={(e) => updateRow(index, { term: e.target.value })}
                   />
+                  <p
+                    className="text-sm"
+                    style={{ color: 'var(--color-text-muted)', margin: 'var(--space-1) 0 0' }}
+                  >
+                    Correct spelling. Blank language fields default to this term for DeepL.
+                  </p>
                 </div>
                 {canEdit ? (
                   <button
@@ -175,6 +239,117 @@ export default function GlossaryPanel({
                   </button>
                 ) : null}
               </div>
+
+              <div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={busy}
+                  onClick={() =>
+                    updateRow(index, { alsoHeardOpen: !row.alsoHeardOpen })
+                  }
+                  aria-expanded={row.alsoHeardOpen}
+                >
+                  {row.alsoHeardOpen ? '▾' : '▸'} Auto-correct captions
+                  {row.alsoHeardAs.length > 0 ? ` (${row.alsoHeardAs.length})` : ' (optional)'}
+                </button>
+                {row.alsoHeardOpen ? (
+                  <div
+                    style={{
+                      marginTop: 'var(--space-2)',
+                      padding: 'var(--space-3)',
+                      border: '1px solid var(--color-border, #e5e5e5)',
+                      borderRadius: 'var(--radius-sm, 6px)',
+                      display: 'grid',
+                      gap: 'var(--space-2)',
+                    }}
+                  >
+                    <p
+                      className="text-sm"
+                      style={{ color: 'var(--color-text-muted)', margin: 0 }}
+                    >
+                      When Deepgram hears… → corrected to Term
+                    </p>
+                    <div
+                      className="flex gap-2"
+                      style={{ flexWrap: 'wrap', alignItems: 'center' }}
+                    >
+                      {row.alsoHeardAs.map((variant) => (
+                        <span
+                          key={variant}
+                          className="text-sm"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 'var(--space-1)',
+                            padding: '2px 8px',
+                            border: '1px solid var(--color-border, #e5e5e5)',
+                            borderRadius: '999px',
+                          }}
+                        >
+                          {variant}
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: '0 4px', minHeight: 0 }}
+                              disabled={busy}
+                              aria-label={`Remove heard variant ${variant}`}
+                              onClick={() => removeHeardVariant(index, variant)}
+                            >
+                              ×
+                            </button>
+                          ) : null}
+                        </span>
+                      ))}
+                      {row.alsoHeardAs.length > 0 ? (
+                        <>
+                          <span
+                            className="text-sm"
+                            style={{ color: 'var(--color-text-muted)' }}
+                            aria-hidden
+                          >
+                            →
+                          </span>
+                          <span
+                            className="badge badge-muted"
+                            title="Corrected spelling (Term)"
+                          >
+                            {row.term.trim() || 'Term'}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                    {canEdit ? (
+                      <div className="flex gap-2" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+                        <input
+                          className="input"
+                          value={row.heardInput}
+                          disabled={busy}
+                          placeholder='e.g. Alpha'
+                          onChange={(e) => updateRow(index, { heardInput: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              addHeardVariant(index)
+                            }
+                          }}
+                          style={{ flex: '1 1 12rem', minWidth: 0 }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={busy || !row.heardInput.trim()}
+                          onClick={() => addHeardVariant(index)}
+                        >
+                          Add heard as
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
               <div className="field-row" style={{ flexWrap: 'wrap' }}>
                 <div className="field" style={{ flex: 1, minWidth: 120 }}>
                   <label className="label">Spanish</label>
@@ -182,6 +357,7 @@ export default function GlossaryPanel({
                     className="input"
                     value={row.es}
                     disabled={!canEdit || busy}
+                    placeholder={row.term.trim() || undefined}
                     onChange={(e) => updateRow(index, { es: e.target.value })}
                   />
                 </div>
@@ -191,6 +367,7 @@ export default function GlossaryPanel({
                     className="input"
                     value={row.pt}
                     disabled={!canEdit || busy}
+                    placeholder={row.term.trim() || undefined}
                     onChange={(e) => updateRow(index, { pt: e.target.value })}
                   />
                 </div>
@@ -200,6 +377,7 @@ export default function GlossaryPanel({
                     className="input"
                     value={row.fr}
                     disabled={!canEdit || busy}
+                    placeholder={row.term.trim() || undefined}
                     onChange={(e) => updateRow(index, { fr: e.target.value })}
                   />
                 </div>
@@ -218,7 +396,16 @@ export default function GlossaryPanel({
             onClick={() =>
               setRows([
                 ...rows,
-                { key: newKey(), term: '', es: '', pt: '', fr: '' },
+                {
+                  key: newKey(),
+                  term: '',
+                  alsoHeardAs: [],
+                  heardInput: '',
+                  alsoHeardOpen: false,
+                  es: '',
+                  pt: '',
+                  fr: '',
+                },
               ])
             }
           >

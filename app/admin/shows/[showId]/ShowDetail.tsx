@@ -34,7 +34,7 @@ import {
 } from '@/lib/sessionStatus'
 import { resolveRoomName } from '@/lib/rooms'
 
-type ShowTab = 'overview' | 'branding' | 'rooms' | 'qr' | 'tech'
+type ShowTab = 'overview' | 'glossary' | 'branding' | 'rooms' | 'qr' | 'tech'
 
 function formatDateRange(start?: Timestamp, end?: Timestamp): string {
   if (!start || !end) return 'Dates TBD'
@@ -75,6 +75,7 @@ export default function ShowDetail({ showId }: { showId: string }) {
   const tabs = useMemo(() => {
     const list: Array<{ id: ShowTab; label: string }> = []
     if (canEditShows) list.push({ id: 'overview', label: 'Overview' })
+    if (canEditShows) list.push({ id: 'glossary', label: 'Glossary' })
     if (canManageBranding) list.push({ id: 'branding', label: 'Branding' })
     if (canEditShows) list.push({ id: 'rooms', label: 'Rooms and sessions' })
     if (canDownloadQr) list.push({ id: 'qr', label: 'QR codes' })
@@ -409,17 +410,6 @@ export default function ShowDetail({ showId }: { showId: string }) {
             />
           </section>
           <section style={{ marginBottom: 'var(--space-8)' }}>
-            <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>
-              Translation glossary
-            </h2>
-            <GlossaryPanel
-              showId={show.id}
-              glossary={show.glossary}
-              canEdit={canEditShows}
-              onFlash={setFlash}
-            />
-          </section>
-          <section style={{ marginBottom: 'var(--space-8)' }}>
             <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Show links</h2>
             <ShowLinksPanel
               showId={show.id}
@@ -440,6 +430,18 @@ export default function ShowDetail({ showId }: { showId: string }) {
             />
           </section>
         </>
+      ) : null}
+
+      {activeTab === 'glossary' ? (
+        <section>
+          <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Glossary</h2>
+          <GlossaryPanel
+            showId={show.id}
+            glossary={show.glossary}
+            canEdit={canEditShows}
+            onFlash={setFlash}
+          />
+        </section>
       ) : null}
 
       {activeTab === 'branding' ? (
@@ -570,7 +572,6 @@ export default function ShowDetail({ showId }: { showId: string }) {
               showId={show.id}
               transcriptionStyle={show.transcriptionStyle}
               operatorInstructions={show.operatorInstructions}
-              deepgramKeyterms={show.deepgramKeyterms}
               canEdit={canManageTech}
               onFlash={setFlash}
             />

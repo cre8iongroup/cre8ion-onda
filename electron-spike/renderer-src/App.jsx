@@ -11,7 +11,11 @@ import {
 } from 'firebase/database'
 import { getOndaSpike } from './ondaSpike.js'
 import { createInputMeterTap } from './lib/inputMeterTap.js'
-import { getFirebaseConfigStatus, getRendererDatabase } from './lib/firebaseClient.js'
+import {
+  getFirebaseConfigStatus,
+  getRendererDatabase,
+  listenRendererRtdbConnected,
+} from './lib/firebaseClient.js'
 import { buildCaptionDisplayLines } from './lib/captionLines.js'
 import { networkHealthColor } from './lib/networkHealth.js'
 
@@ -105,6 +109,7 @@ function CaptionPreview({ sessionId, feedState }) {
   const [chunks, setChunks] = useState([])
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
+  const [rtdbConnected, setRtdbConnected] = useState(null)
   const scrollRef = useRef(null)
 
   // Partials share one in-progress row; finals become permanent lines.
@@ -114,13 +119,21 @@ function CaptionPreview({ sessionId, feedState }) {
     setChunks([])
     setError('')
     setReady(false)
+    setRtdbConnected(null)
     if (!sessionId) return undefined
     if (feedState === 'ended') return undefined
 
     let unsubAdded = () => {}
     let unsubValue = () => {}
+    let unsubConnected = () => {}
+    let stallTimer = 0
+    let gotReady = false
     try {
       const db = getRendererDatabase()
+      unsubConnected = listenRendererRtdbConnected(
+        (connected) => setRtdbConnected(connected),
+        (err) => setError(err?.message || String(err)),
+      )
       const chunksRef = query(
         ref(db, `liveSessions/${sessionId}/chunks`),
         orderByChild('timestamp'),
@@ -139,17 +152,35 @@ function CaptionPreview({ sessionId, feedState }) {
           setChunks(
             Array.from(seen.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)),
           )
+          gotReady = true
           setReady(true)
         },
         onListenError,
       )
-      unsubValue = onValue(chunksRef, () => setReady(true), onListenError)
+      unsubValue = onValue(
+        chunksRef,
+        () => {
+          gotReady = true
+          setReady(true)
+        },
+        onListenError,
+      )
+      // Same root cause as feedState: if transport never connects, onValue stays silent.
+      stallTimer = window.setTimeout(() => {
+        if (!gotReady) {
+          setError(
+            'RTDB caption listener got no snapshot — renderer Firebase client may not be connected.',
+          )
+        }
+      }, 8000)
     } catch (err) {
       setError(err?.message || String(err))
     }
     return () => {
+      window.clearTimeout(stallTimer)
       unsubAdded()
       unsubValue()
+      unsubConnected()
     }
   }, [sessionId, feedState])
 
@@ -175,6 +206,7 @@ function CaptionPreview({ sessionId, feedState }) {
       <div className="op-caption-empty">
         Waiting for live captions…
         {feedState === 'standby' ? ' Enable sound check to start capture.' : ''}
+        {rtdbConnected === false ? ' (RTDB disconnected)' : ''}
       </div>
     )
   }
@@ -339,7 +371,7 @@ export default function App() {
       const fb = getFirebaseConfigStatus()
       appendLog({
         level: 'info',
-        message: `Firebase client config: project=${fb.projectId || '—'} dbUrl=${fb.hasDatabaseUrl} apiKey=${fb.hasApiKey}`,
+        message: `Firebase client config: project=${fb.projectId || '—'} host=${fb.databaseHost || '—'} dbUrl=${fb.hasDatabaseUrl} apiKey=${fb.hasApiKey}`,
       })
     })
 
@@ -358,13 +390,35 @@ export default function App() {
     const sessionId = selectedSessionId
     const path = `liveSessions/${sessionId}/feedState`
     let unsub = () => {}
+    let unsubConnected = () => {}
     let sawSnapshot = false
+    let sawConnectedEvent = false
+    let stallTimer = 0
+    const fb = getFirebaseConfigStatus()
     appendLog({
       level: 'info',
       message: `RTDB feedState listening on ${path}`,
-      extra: { sessionId, screen },
+      extra: { sessionId, screen, databaseHost: fb.databaseHost },
     })
     try {
+      // Force-WebSocket client + .info/connected probe (surfaces silent transport hangs).
+      unsubConnected = listenRendererRtdbConnected(
+        (connected) => {
+          sawConnectedEvent = true
+          appendLog({
+            level: connected ? 'info' : 'warn',
+            message: connected ? 'RTDB .info/connected → true' : 'RTDB .info/connected → false',
+            extra: { sessionId },
+          })
+        },
+        (err) => {
+          appendLog({
+            level: 'warn',
+            message: `RTDB .info/connected listen failed: ${err?.message || String(err)}`,
+            extra: { sessionId },
+          })
+        },
+      )
       const db = getRendererDatabase()
       const feedRef = ref(db, path)
       unsub = onValue(
@@ -407,6 +461,19 @@ export default function App() {
           })
         },
       )
+      stallTimer = window.setTimeout(() => {
+        if (sawSnapshot) return
+        appendLog({
+          level: 'error',
+          message:
+            'RTDB feedState: no snapshot 8s after subscribe — renderer client never connected (check CSP / WebSocket / baked NEXT_PUBLIC_FIREBASE_DATABASE_URL)',
+          extra: {
+            sessionId,
+            sawConnectedEvent,
+            databaseHost: fb.databaseHost,
+          },
+        })
+      }, 8000)
     } catch (err) {
       appendLog({
         level: 'warn',
@@ -416,12 +483,14 @@ export default function App() {
     }
 
     return () => {
+      window.clearTimeout(stallTimer)
       appendLog({
         level: 'info',
         message: `RTDB feedState unsubscribed ${path}`,
-        extra: { sessionId, sawSnapshot },
+        extra: { sessionId, sawSnapshot, sawConnectedEvent },
       })
       unsub()
+      unsubConnected()
     }
   }, [screen, selectedSessionId, appendLog])
 

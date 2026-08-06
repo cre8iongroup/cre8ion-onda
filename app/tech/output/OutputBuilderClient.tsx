@@ -69,6 +69,9 @@ export default function OutputBuilderClient() {
     () => (Array.isArray(userDoc?.assignedShows) ? userDoc!.assignedShows : []),
     [userDoc],
   )
+  const isAdmin = userDoc?.baseRole === 'admin'
+  /** Admins have empty assignedShows by design — they need a show picker. */
+  const needsShowPicker = isAdmin || assignedShows.length !== 1
 
   const deepShowId = searchParams.get('showId')
   const deepRoomId = searchParams.get('roomId')
@@ -79,12 +82,14 @@ export default function OutputBuilderClient() {
   const [showId, setShowId] = useState<string | null>(null)
   const [roomId, setRoomId] = useState<string | null>(null)
   const [show, setShow] = useState<WithId<ShowDoc> | null>(null)
+  const [showOptions, setShowOptions] = useState<Array<{ id: string; name: string }>>([])
   const [rooms, setRooms] = useState<WithId<RoomDoc>[]>([])
   const [windows, setWindows] = useState<OutputWindowConfig[] | null>(null)
   const [presets, setPresets] = useState<WithId<OutputLayoutDoc>[]>([])
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [needsSeed, setNeedsSeed] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [resolvingRoom, setResolvingRoom] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -97,25 +102,100 @@ export default function OutputBuilderClient() {
   const primaryLanguage = show?.defaultLanguages?.[0] || 'en'
   const canManagePresets = Boolean(capabilities?.canManageOutputLayouts)
 
-  // Resolve initial show from assignedShows / deep link
+  const selectedRoomName = useMemo(() => {
+    if (!roomId) return null
+    const fromSub = rooms.find((r) => r.id === roomId)
+    if (fromSub) return fromSub.name
+    const fromDenorm = (show?.rooms || []).find((r) => r.id === roomId)
+    return fromDenorm?.name || null
+  }, [roomId, rooms, show?.rooms])
+
+  // Catalog of shows for admin (or multi-assigned) picker
   useEffect(() => {
-    if (deepShowId && (assignedShows.length === 0 || assignedShows.includes(deepShowId) || userDoc?.baseRole === 'admin')) {
+    if (!needsShowPicker) {
+      setShowOptions(
+        assignedShows.map((id) => ({ id, name: id === show?.id ? show.name : id })),
+      )
+      return
+    }
+    const fs = getClientFirestore()
+    return onSnapshot(
+      query(collection(fs, 'shows'), orderBy('name', 'asc')),
+      (snap) => {
+        setShowOptions(
+          snap.docs.map((d) => ({
+            id: d.id,
+            name: (d.data() as ShowDoc).name || d.id,
+          })),
+        )
+      },
+      (err) => console.warn('OutputBuilder: show catalog failed', err),
+    )
+  }, [needsShowPicker, assignedShows, show?.id, show?.name])
+
+  // Resolve showId: deep link → assigned tech show → leave unset for admin picker
+  useEffect(() => {
+    if (deepShowId && (isAdmin || assignedShows.length === 0 || assignedShows.includes(deepShowId))) {
       setShowId(deepShowId)
       return
     }
-    if (assignedShows[0]) setShowId(assignedShows[0])
-  }, [assignedShows, deepShowId, userDoc?.baseRole])
+    if (!isAdmin && assignedShows.length === 1) {
+      setShowId(assignedShows[0])
+    }
+  }, [assignedShows, deepShowId, isAdmin])
 
   useEffect(() => {
     if (deepRoomId) setRoomId(deepRoomId)
   }, [deepRoomId])
 
+  // When roomId is present but showId is not, resolve via authenticated API
+  useEffect(() => {
+    if (!deepRoomId || showId || !user) return
+    let cancelled = false
+    setResolvingRoom(true)
+    void (async () => {
+      try {
+        const token = await user.getIdToken()
+        const res = await fetch(
+          `/api/tech/resolve-room?roomId=${encodeURIComponent(deepRoomId)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+        const json = (await res.json().catch(() => ({}))) as {
+          showId?: string
+          error?: string
+        }
+        if (cancelled) return
+        if (!res.ok || !json.showId) {
+          setError(json.error || 'Could not resolve room to a show.')
+          return
+        }
+        setShowId(json.showId)
+        setRoomId(deepRoomId)
+        const params = new URLSearchParams()
+        params.set('showId', json.showId)
+        params.set('roomId', deepRoomId)
+        router.replace(`/tech/output?${params.toString()}`)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to resolve room.')
+        }
+      } finally {
+        if (!cancelled) setResolvingRoom(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [deepRoomId, showId, user, router])
+
   // Load show
   useEffect(() => {
     if (!showId) {
       setLoading(false)
+      setShow(null)
       return
     }
+    setLoading(true)
     const fs = getClientFirestore()
     return onSnapshot(
       doc(fs, 'shows', showId),
@@ -123,18 +203,25 @@ export default function OutputBuilderClient() {
         if (!snap.exists()) {
           setError('Show not found.')
           setShow(null)
+          setLoading(false)
           return
         }
         setShow({ id: snap.id, ...(snap.data() as ShowDoc) })
         setError(null)
       },
-      (err) => setError(err.message || 'Failed to load show.'),
+      (err) => {
+        setError(err.message || 'Failed to load show.')
+        setLoading(false)
+      },
     )
   }, [showId])
 
   // Load rooms subcollection
   useEffect(() => {
-    if (!showId) return
+    if (!showId) {
+      setRooms([])
+      return
+    }
     const fs = getClientFirestore()
     return onSnapshot(
       collection(fs, 'shows', showId, 'rooms'),
@@ -151,12 +238,6 @@ export default function OutputBuilderClient() {
       },
     )
   }, [showId])
-
-  // If deep roomId but show not set: find room among loaded rooms once rooms arrive
-  useEffect(() => {
-    if (!deepRoomId || showId) return
-    // Admin with empty assignedShows may need to pick show first — leave as-is
-  }, [deepRoomId, showId])
 
   // Load selected room config
   useEffect(() => {
@@ -195,6 +276,7 @@ export default function OutputBuilderClient() {
       (err) => setError(err.message || 'Failed to load room.'),
     )
   }, [showId, roomId, primaryLanguage])
+
 
   // Presets for first-run apply
   useEffect(() => {
@@ -288,6 +370,15 @@ export default function OutputBuilderClient() {
     window.open(`/output/${encodeURIComponent(roomId)}/${index}`, `onda-output-${roomId}-${index}`)
   }
 
+  function selectShow(nextShowId: string) {
+    setShowId(nextShowId || null)
+    setRoomId(null)
+    setWindows(null)
+    const params = new URLSearchParams()
+    if (nextShowId) params.set('showId', nextShowId)
+    router.replace(`/tech/output?${params.toString()}`)
+  }
+
   function selectRoom(nextRoomId: string) {
     setRoomId(nextRoomId || null)
     const params = new URLSearchParams()
@@ -296,14 +387,21 @@ export default function OutputBuilderClient() {
     router.replace(`/tech/output?${params.toString()}`)
   }
 
+  function changeRoom() {
+    setRoomId(null)
+    setWindows(null)
+    setNeedsSeed(false)
+    const params = new URLSearchParams()
+    if (showId) params.set('showId', showId)
+    router.replace(`/tech/output?${params.toString()}`)
+  }
+
   const denormRooms: ShowRoom[] = useMemo(() => {
     if (rooms.length > 0) return rooms.map((r) => ({ id: r.id, name: r.name }))
     return Array.isArray(show?.rooms) ? show!.rooms! : []
   }, [rooms, show])
 
-  const showPickerOptions = assignedShows.length > 1 || userDoc?.baseRole === 'admin'
-
-  if (loading && !show) {
+  if (resolvingRoom || (loading && !show && Boolean(showId))) {
     return (
       <div className="flex items-center justify-center" style={{ padding: 'var(--space-16)' }}>
         <span className="spinner" aria-label="Loading" />
@@ -311,10 +409,43 @@ export default function OutputBuilderClient() {
     )
   }
 
+  // Admin / unscoped: show picker instead of "not assigned"
   if (!showId) {
     return (
-      <div className="alert alert-warning" role="status">
-        This tech account is not assigned to a show. Ask an admin to provision tech login for the show.
+      <div className="panel-content">
+        <div style={{ marginBottom: 'var(--space-8)' }}>
+          <h1 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>
+            Output Builder
+          </h1>
+          <p style={{ color: 'var(--color-text-secondary)' }}>
+            {isAdmin || assignedShows.length === 0
+              ? 'Select a show to configure room output windows.'
+              : 'This tech account is not assigned to a show. Ask an admin to provision tech login.'}
+          </p>
+        </div>
+        {error && (
+          <div className="alert alert-error" role="alert" style={{ marginBottom: 'var(--space-6)' }}>
+            {error}
+          </div>
+        )}
+        {(isAdmin || needsShowPicker) && showOptions.length > 0 ? (
+          <div className="field" style={{ maxWidth: 420 }}>
+            <label htmlFor="output-show-pick" className="label">Show</label>
+            <select
+              id="output-show-pick"
+              className="input"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) selectShow(e.target.value)
+              }}
+            >
+              <option value="">Select a show…</option>
+              {showOptions.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -322,10 +453,26 @@ export default function OutputBuilderClient() {
   return (
     <div className="panel-content">
       <div style={{ marginBottom: 'var(--space-8)' }}>
-        <h1 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>Output Builder</h1>
-        <p style={{ color: 'var(--color-text-secondary)' }}>
-          Configure live caption output windows for one room. Open the Output Windows to preview — there is no in-page preview.
-        </p>
+        <div className="flex items-center justify-between gap-4" style={{ flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>
+              {selectedRoomName
+                ? `Output Builder — ${selectedRoomName}`
+                : 'Output Builder'}
+            </h1>
+            <p style={{ color: 'var(--color-text-secondary)' }}>
+              {show?.name || 'Show'}
+              {selectedRoomName
+                ? ' · Configure live caption output windows. Open the Output Windows to preview.'
+                : ' · Select a room to configure. Open the Output Windows to preview — no in-page preview.'}
+            </p>
+          </div>
+          {roomId ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={changeRoom}>
+              ← Change room
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {error && (
@@ -339,49 +486,45 @@ export default function OutputBuilderClient() {
         </div>
       )}
 
-      <div className="field-row" style={{ marginBottom: 'var(--space-6)' }}>
-        {showPickerOptions ? (
+      {!roomId ? (
+        <div className="field-row" style={{ marginBottom: 'var(--space-6)' }}>
+          {needsShowPicker ? (
+            <div className="field">
+              <label htmlFor="output-show" className="label">Show</label>
+              <select
+                id="output-show"
+                className="input"
+                value={showId}
+                onChange={(e) => selectShow(e.target.value)}
+              >
+                {showOptions.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="field">
+              <span className="label">Show</span>
+              <p style={{ marginTop: 'var(--space-2)' }}>{show?.name || showId}</p>
+            </div>
+          )}
+
           <div className="field">
-            <label htmlFor="output-show" className="label">Show</label>
+            <label htmlFor="output-room" className="label">Room</label>
             <select
-              id="output-show"
+              id="output-room"
               className="input"
-              value={showId}
-              onChange={(e) => {
-                setShowId(e.target.value)
-                setRoomId(null)
-                router.replace(`/tech/output?showId=${encodeURIComponent(e.target.value)}`)
-              }}
+              value=""
+              onChange={(e) => selectRoom(e.target.value)}
             >
-              {(assignedShows.length ? assignedShows : [showId]).map((id) => (
-                <option key={id} value={id}>
-                  {id === show?.id ? show.name : id}
-                </option>
+              <option value="">Select a room…</option>
+              {denormRooms.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </select>
           </div>
-        ) : (
-          <div className="field">
-            <span className="label">Show</span>
-            <p style={{ marginTop: 'var(--space-2)' }}>{show?.name || showId}</p>
-          </div>
-        )}
-
-        <div className="field">
-          <label htmlFor="output-room" className="label">Room</label>
-          <select
-            id="output-room"
-            className="input"
-            value={roomId || ''}
-            onChange={(e) => selectRoom(e.target.value)}
-          >
-            <option value="">Select a room…</option>
-            {denormRooms.map((r) => (
-              <option key={r.id} value={r.id}>{r.name}</option>
-            ))}
-          </select>
         </div>
-      </div>
+      ) : null}
 
       {!roomId ? (
         <p style={{ color: 'var(--color-text-muted)' }}>Select a room to edit its output windows.</p>

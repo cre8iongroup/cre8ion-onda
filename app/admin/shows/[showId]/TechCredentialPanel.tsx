@@ -87,7 +87,8 @@ export default function TechCredentialPanel({
         </span>
       </p>
       <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
-        Login URL: <code>/tech/login</code> · Show code: <code>{portalSlug || '—'}</code>
+        Login URL: <code>/tech/login</code> · credential-only (same as Onda Operator unlock).
+        Portal slug <code>{portalSlug || '—'}</code> is used internally for the tech Auth email.
       </p>
       <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
         Requires the <code>canManageTech</code> capability (independent of show edit).

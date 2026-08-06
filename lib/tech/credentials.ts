@@ -7,6 +7,8 @@
  *   userDoc:  baseRole 'tech', assignedShows: [showId]
  *
  * Electron unlock validates techCredential via Admin API — not Auth sign-in.
+ * Web /tech/login uses the same Firestore credential lookup, then mints a
+ * Firebase custom token for this synthetic user (no password path).
  */
 
 export const TECH_EMAIL_DOMAIN = 'onda.tech'

@@ -22,7 +22,9 @@ export default function TechLayout({ children }: { children: React.ReactNode }) 
     if (isLogin) return
     if (loading) return
     if (!user) {
-      router.replace(`/tech/login?from=${encodeURIComponent(pathname || '/tech')}`)
+      const search = typeof window !== 'undefined' ? window.location.search : ''
+      const from = `${pathname || '/tech'}${search || ''}`
+      router.replace(`/tech/login?from=${encodeURIComponent(from)}`)
       return
     }
     if (!capabilities?.canAccessTechPanel) {

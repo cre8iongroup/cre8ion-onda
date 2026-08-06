@@ -45,13 +45,14 @@ export async function proxy(request: NextRequest) {
   if (!sessionCookie?.value) {
     const loginUrl = new URL(
       pathname.startsWith('/tech') ? '/tech/login' : '/login',
-      request.url
+      request.url,
     )
-    if (!pathname.startsWith('/tech')) {
-      loginUrl.searchParams.set('from', pathname)
-    } else {
-      loginUrl.searchParams.set('from', pathname)
-    }
+    // Preserve query string (e.g. /tech/output?roomId=…) through the login bounce.
+    const from =
+      request.nextUrl.search && request.nextUrl.search !== '?'
+        ? `${pathname}${request.nextUrl.search}`
+        : pathname
+    loginUrl.searchParams.set('from', from)
     return NextResponse.redirect(loginUrl)
   }
 

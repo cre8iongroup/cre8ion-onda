@@ -57,20 +57,49 @@ export default function TechSessionsPage() {
   const { userDoc } = useAuthContext()
   const assignedShows = useMemo(
     () => (Array.isArray(userDoc?.assignedShows) ? userDoc!.assignedShows : []),
-    [userDoc]
+    [userDoc],
   )
+  const isAdmin = userDoc?.baseRole === 'admin'
+  const needsShowPicker = isAdmin || assignedShows.length !== 1
 
+  const [showId, setShowId] = useState<string | null>(null)
+  const [showOptions, setShowOptions] = useState<Array<{ id: string; name: string }>>([])
   const [show, setShow] = useState<WithId<ShowDoc> | null>(null)
   const [sessions, setSessions] = useState<WithId<SessionDoc>[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const showId = assignedShows[0] || null
+  useEffect(() => {
+    if (!needsShowPicker && assignedShows[0]) {
+      setShowId(assignedShows[0])
+      return
+    }
+    if (!needsShowPicker) return
+    const fs = getClientFirestore()
+    return onSnapshot(
+      query(collection(fs, 'shows'), orderBy('name', 'asc')),
+      (snap) => {
+        const opts = snap.docs.map((d) => ({
+          id: d.id,
+          name: (d.data() as ShowDoc).name || d.id,
+        }))
+        setShowOptions(opts)
+        setShowId((prev) => prev || opts[0]?.id || null)
+        setLoading(false)
+      },
+      (err) => {
+        setError(err.message || 'Failed to load shows.')
+        setLoading(false)
+      },
+    )
+  }, [needsShowPicker, assignedShows])
 
   useEffect(() => {
     if (!showId) {
-      setLoading(false)
-      setError('This tech account is not assigned to a show.')
+      if (!needsShowPicker) {
+        setLoading(false)
+        setError('This tech account is not assigned to a show.')
+      }
       return
     }
 
@@ -89,12 +118,12 @@ export default function TechSessionsPage() {
       (err) => {
         console.error('TechSessions: show load failed', err)
         setError(err.message || 'Failed to load show.')
-      }
+      },
     )
 
     const q = query(
       collection(fs, 'shows', showId, 'sessions'),
-      orderBy('scheduledStart', 'asc')
+      orderBy('scheduledStart', 'asc'),
     )
     const unsubSessions = onSnapshot(
       q,
@@ -106,14 +135,14 @@ export default function TechSessionsPage() {
         console.error('TechSessions: sessions load failed', err)
         setError(err.message || 'Failed to load sessions.')
         setLoading(false)
-      }
+      },
     )
 
     return () => {
       unsubShow()
       unsubSessions()
     }
-  }, [showId])
+  }, [showId, needsShowPicker])
 
   const relevant = sessions.filter((s) => s.isDraft !== true && isRelevantNow(s))
 
@@ -128,13 +157,32 @@ export default function TechSessionsPage() {
               <span style={{ color: 'var(--color-text-muted)' }}> · {show.clientName}</span>
             </>
           ) : (
-            'Your assigned show'
+            'Select a show'
           )}
         </p>
         <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
           Showing upcoming / live sessions for today and tomorrow.
         </p>
       </div>
+
+      {needsShowPicker && showOptions.length > 0 ? (
+        <div className="field" style={{ maxWidth: 360, marginBottom: 'var(--space-6)' }}>
+          <label htmlFor="tech-sessions-show" className="label">Show</label>
+          <select
+            id="tech-sessions-show"
+            className="input"
+            value={showId || ''}
+            onChange={(e) => {
+              setShowId(e.target.value || null)
+              setLoading(true)
+            }}
+          >
+            {showOptions.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       {error && (
         <div className="alert alert-error" role="alert" style={{ marginBottom: 'var(--space-6)' }}>

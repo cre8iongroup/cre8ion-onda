@@ -149,6 +149,7 @@ p { color: var(--color-text-secondary); }
 /* Output Windows: captions are <p> tags — do not force panel secondary text color */
 .output-window-root p {
   color: inherit;
+  font-family: inherit;
 }
 
 a {

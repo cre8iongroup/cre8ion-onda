@@ -216,7 +216,7 @@ export default function OutputWindowClient({
         background: bg,
         color,
         fontSize: `${fontSize}px`,
-        fontFamily: 'Georgia, "Times New Roman", serif',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
         lineHeight: 1.35,
         overflow: 'hidden',
       }}
@@ -244,6 +244,7 @@ export default function OutputWindowClient({
                     // Must set color on <p>: globals.css `p { color: … }` overrides
                     // inherited color from the root (background is unaffected).
                     color,
+                    fontFamily: 'inherit',
                     opacity: isLatest ? 1 : 0.72,
                     fontWeight: isLatest ? 600 : 400,
                   }}
@@ -262,7 +263,7 @@ export default function OutputWindowClient({
             justifyContent: 'center',
             opacity: 0.35,
             fontSize: Math.min(fontSize, 28),
-            fontFamily: 'system-ui, sans-serif',
+            fontFamily: 'inherit',
           }}
         >
           {idleMessage}

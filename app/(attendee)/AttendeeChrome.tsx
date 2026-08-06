@@ -1,7 +1,9 @@
 import type { CSSProperties, ReactNode } from 'react'
+import Link from 'next/link'
 import Markdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import type { EffectiveBranding } from '@/types'
+import { WhyOndaLink } from '@/components/WhyOndaModal'
 import { AttendeeThemeColor } from './AttendeeThemeColor'
 import './attendee.css'
 
@@ -103,10 +105,14 @@ export function AttendeeFooter({
       ) : null}
       <footer className="attendee-powered-by">
         <p>
-          {eventTitle} · Powered by{' '}
-          <a href="https://cre8ion.com" rel="noopener noreferrer">
-            cre8ion Onda
-          </a>
+          {eventTitle} · Powered by cre8ion ·{' '}
+          <WhyOndaLink id="btn-attendee-why-onda" className="attendee-powered-by-action">
+            why
+          </WhyOndaLink>
+          {' · '}
+          <Link href="/what-is-onda" className="attendee-powered-by-action">
+            learn more
+          </Link>
         </p>
       </footer>
     </>

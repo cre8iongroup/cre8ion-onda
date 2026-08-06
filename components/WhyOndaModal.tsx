@@ -91,10 +91,11 @@ export function WhyOndaModal({ open, onClose }: WhyOndaModalProps) {
 export type WhyOndaLinkProps = {
   className?: string
   id?: string
+  children?: React.ReactNode
 }
 
 /** Footer / inline trigger that opens {@link WhyOndaModal}. */
-export function WhyOndaLink({ className, id }: WhyOndaLinkProps) {
+export function WhyOndaLink({ className, id, children }: WhyOndaLinkProps) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -105,7 +106,7 @@ export function WhyOndaLink({ className, id }: WhyOndaLinkProps) {
         className={className ?? 'why-onda-link'}
         onClick={() => setOpen(true)}
       >
-        why Onda?
+        {children ?? 'why Onda?'}
       </button>
       <WhyOndaModal open={open} onClose={() => setOpen(false)} />
     </>

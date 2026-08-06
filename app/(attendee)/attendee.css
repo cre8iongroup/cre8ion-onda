@@ -144,6 +144,21 @@
   text-underline-offset: 2px;
 }
 
+.attendee-powered-by-action {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.attendee-powered-by-action:hover {
+  opacity: 0.85;
+}
+
 .attendee-legal-notice {
   margin-top: 0;
 }

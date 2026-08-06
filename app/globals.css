@@ -1118,3 +1118,87 @@ a.admin-public-link code {
   text-align: right;
 }
 
+/* ── Product landing (/what-is-onda) ─────────────────────── */
+
+.product-landing {
+  min-height: 100dvh;
+  background:
+    radial-gradient(ellipse at top, rgba(91, 58, 238, 0.18), transparent 55%),
+    var(--color-bg);
+  color: var(--color-text-primary);
+}
+
+.product-landing-inner {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-5) var(--space-16);
+}
+
+.product-landing-eyebrow {
+  font-size: var(--text-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-4);
+  font-weight: 600;
+}
+
+.product-landing-title {
+  font-size: clamp(1.75rem, 4vw, 2.35rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--space-5);
+}
+
+.product-landing-lede {
+  font-size: var(--text-md);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-10);
+  line-height: 1.55;
+}
+
+.product-landing-section {
+  margin-bottom: var(--space-8);
+}
+
+.product-landing-section h2 {
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-3);
+}
+
+.product-landing-section p,
+.product-landing-section li {
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.product-landing-section ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.product-landing-section strong {
+  color: var(--color-text-primary);
+}
+
+.product-landing-cta-wrap {
+  margin: var(--space-10) 0 0;
+}
+
+.product-landing-cta {
+  display: inline-block;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.product-landing-cta:hover {
+  background: var(--color-primary-light);
+  color: #fff;
+}
+

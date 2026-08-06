@@ -400,9 +400,17 @@ export default function OutputBuilderClient() {
 
   return (
     <div className="panel-content">
-      <div style={{ marginBottom: 'var(--space-8)' }}>
-        <div className="flex items-center justify-between gap-4" style={{ flexWrap: 'wrap' }}>
-          <div>
+      <div style={{ marginBottom: 'var(--space-10)' }}>
+        <div
+          className="flex"
+          style={{
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 'var(--space-4)',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ flex: '1 1 240px', minWidth: 0 }}>
             <h1 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>
               {selectedRoomName
                 ? `Output Builder — ${selectedRoomName}`
@@ -418,6 +426,7 @@ export default function OutputBuilderClient() {
             id="btn-output-change-room"
             className="btn btn-ghost btn-sm"
             onClick={changeRoom}
+            style={{ flexShrink: 0, marginTop: 'var(--space-1)' }}
           >
             ← Change room
           </button>
@@ -478,44 +487,39 @@ export default function OutputBuilderClient() {
         </div>
       ) : windows ? (
         <>
-          <div className="flex gap-3" style={{ marginBottom: 'var(--space-6)', flexWrap: 'wrap' }}>
-            {windows.slice(0, OUTPUT_BUILDER_WINDOW_COUNT).map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => openWindow(i)}
-              >
-                Open Window {i + 1}
-              </button>
-            ))}
-            <span className="text-sm" style={{ color: 'var(--color-text-muted)', alignSelf: 'center' }}>
+          <div style={{ marginBottom: 'var(--space-8)' }}>
+            <div className="flex" style={{ gap: 'var(--space-3)', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
+              {windows.slice(0, OUTPUT_BUILDER_WINDOW_COUNT).map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => openWindow(i)}
+                >
+                  Open Window {i + 1}
+                </button>
+              ))}
+            </div>
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)', margin: 0 }}>
               {saving ? 'Saving…' : 'Changes sync live to open Output Windows'}
-            </span>
+            </p>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-              gap: 'var(--space-6)',
-            }}
-          >
+          <div className="output-builder-windows">
             {windows.slice(0, OUTPUT_BUILDER_WINDOW_COUNT).map((w, index) => {
               const inherited = !w.textColor
               const textDisplay = w.textColor || brandTextColor
               return (
                 <section
                   key={index}
-                  className="card"
-                  style={{ padding: 'var(--space-5)' }}
+                  className="card output-builder-window"
                   aria-label={`Window ${index + 1}`}
                 >
-                  <h2 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-4)' }}>
+                  <h2 className="output-builder-window-title">
                     Window {index + 1}
                   </h2>
 
-                  <div className="field">
+                  <div className="output-builder-section">
                     <label className="label" htmlFor={`ow-lang-${index}`}>Language</label>
                     <select
                       id={`ow-lang-${index}`}
@@ -534,40 +538,33 @@ export default function OutputBuilderClient() {
                     </select>
                   </div>
 
-                  <div className="field">
-                    <label className="label" htmlFor={`ow-font-${index}`}>
-                      Font size ({w.fontSize}px)
-                    </label>
-                    <input
-                      id={`ow-font-${index}`}
-                      type="range"
-                      min={16}
-                      max={120}
-                      value={w.fontSize}
-                      onChange={(e) => updateWindow(index, { fontSize: Number(e.target.value) })}
-                    />
-                    <input
-                      type="number"
-                      className="input"
-                      min={12}
-                      max={200}
-                      value={w.fontSize}
-                      onChange={(e) => {
-                        const n = Number(e.target.value)
-                        if (Number.isFinite(n)) updateWindow(index, { fontSize: n })
-                      }}
-                      style={{ marginTop: 'var(--space-2)' }}
-                    />
+                  <div className="output-builder-section">
+                    <label className="label" htmlFor={`ow-font-${index}`}>Font size</label>
+                    <div className="output-builder-font-row">
+                      <input
+                        id={`ow-font-${index}`}
+                        className="output-builder-font-slider"
+                        type="range"
+                        min={16}
+                        max={120}
+                        value={w.fontSize}
+                        onChange={(e) => updateWindow(index, { fontSize: Number(e.target.value) })}
+                        aria-valuetext={`${w.fontSize} pixels`}
+                      />
+                      <span className="output-builder-font-value" aria-hidden>
+                        {w.fontSize}px
+                      </span>
+                    </div>
                   </div>
 
-                  <div style={{ marginBottom: 'var(--space-4)' }}>
+                  <div className="output-builder-section">
                     <ColorField
                       id={`ow-bg-${index}`}
                       label="Background"
                       value={w.backgroundColor}
                       onChange={(hex) => updateWindow(index, { backgroundColor: hex })}
                     />
-                    <div className="flex gap-2" style={{ flexWrap: 'wrap', marginTop: 'var(--space-2)' }}>
+                    <div className="flex gap-2" style={{ flexWrap: 'wrap', marginTop: 'var(--space-3)' }}>
                       {BG_SWATCHES.map((s) => (
                         <button
                           key={s.value}
@@ -593,8 +590,8 @@ export default function OutputBuilderClient() {
                     </div>
                   </div>
 
-                  <div>
-                    <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
+                  <div className="output-builder-section output-builder-section-last">
+                    <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
                       {inherited ? 'Inherited from brand' : 'Custom override'}
                       {inherited ? (
                         <>

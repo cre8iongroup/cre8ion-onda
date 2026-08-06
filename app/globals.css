@@ -711,6 +711,29 @@ a.show-list-item:focus-visible {
   outline-offset: 2px;
 }
 
+.tech-room-list {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 560px;
+}
+
+.tech-room-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  padding: var(--space-4) var(--space-5);
+}
+
+.tech-room-card-name {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
 .checkbox-grid {
   display: flex;
   flex-direction: column;

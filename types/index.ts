@@ -120,6 +120,25 @@ export interface RoomBranding {
 }
 
 /**
+ * Per-window caption output config (Builder + Output Windows).
+ * `textColor` omitted → inherit show branding text color at render time.
+ * Never persist `undefined` — omit optional fields instead.
+ */
+export interface OutputWindowConfig {
+  language: string | null
+  fontSize: number // px
+  backgroundColor: string // hex or named (e.g. chroma-key green)
+  textColor?: string
+}
+
+/** Persisted on the room doc; live mirror lives at RTDB `outputLive/{roomId}`. */
+export interface RoomOutputConfig {
+  windows: OutputWindowConfig[]
+  updatedAt?: Timestamp
+  updatedBy?: string
+}
+
+/**
  * Full room document at shows/{showId}/rooms/{roomId}.
  * ShowDoc.rooms[] remains a denormalized {id,name}[] for Operator unlock dual-write.
  */
@@ -127,6 +146,11 @@ export interface RoomDoc {
   name: string
   branding: RoomBranding
   qrCodeUrl?: string
+  /**
+   * Live caption output configuration for this room (Output Builder).
+   * Independent of outputLayouts presets once applied.
+   */
+  outputConfig?: RoomOutputConfig
   createdAt: Timestamp
   createdBy: string
 }
@@ -254,7 +278,6 @@ export interface SessionDoc {
   aiSummaryGeneratedAt?: Timestamp
   aiSummaryTriggeredBy?: string
   publishedAt?: Timestamp
-  outputLayoutTemplateId?: string
   /** Public download URL for the session QR (PNG preferred when both exist). */
   qrCodeUrl?: string
   /**
@@ -316,25 +339,24 @@ export interface RTDBSession {
 }
 
 // ─────────────────────────────────────────────
-// Output Layout Templates
+// Output Presets (Firestore outputLayouts collection)
 // ─────────────────────────────────────────────
 
-export type FontSize = 'small' | 'medium' | 'large' | 'xlarge'
-export type BackgroundType = 'black' | 'white' | 'chromaKey' | 'custom'
-export type CaptionLayout = 'stacked' | 'sideBySide'
-
+/**
+ * Starting-point preset for a room's outputConfig.windows.
+ * Applied once in the Output Builder — never a live room→preset reference.
+ * Legacy docs (pre-windows[] schema) may still exist; UI should filter them.
+ */
 export interface OutputLayoutDoc {
   name: string
-  primaryLanguage: string
-  secondaryLanguage?: string
-  fontSize: FontSize
-  backgroundType: BackgroundType
-  backgroundColor?: string    // hex — if custom
-  layout: CaptionLayout
-  textColor: string           // hex
-  showSpeakerLabels: boolean
+  windows: OutputWindowConfig[]
   createdBy: string
   createdAt: Timestamp
+}
+
+/** Ephemeral RTDB mirror at outputLive/{roomId} (Builder → Output Windows). */
+export interface RTDBOutputLive {
+  windows: OutputWindowConfig[]
 }
 
 // ─────────────────────────────────────────────

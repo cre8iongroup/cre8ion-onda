@@ -15,6 +15,7 @@ const firestore = admin.firestore()
  *      ordered by sequenceNumber
  *   4. Sets session feedState to 'ended'
  *   5. Deletes the /liveSessions/{sessionId} RTDB node (cleanup)
+ *      Note: does NOT touch outputLive/{roomId} — that tree is independent of session lifecycle.
  *   6. Writes an audit log entry
  */
 export const onSessionEnd = functions.database

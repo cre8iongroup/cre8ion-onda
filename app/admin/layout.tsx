@@ -9,7 +9,7 @@ import { WhyOndaLink } from '@/components/WhyOndaModal'
 const ADMIN_NAV = [
   { href: '/admin',               label: 'Shows',        icon: '🎬', show: () => true },
   { href: '/admin/users',         label: 'Users',        icon: '👥', show: (c: { canManageUsers?: boolean }) => Boolean(c.canManageUsers) },
-  { href: '/admin/layouts',       label: 'Layouts',      icon: '🖥️', show: (c: { canManageOutputLayouts?: boolean }) => Boolean(c.canManageOutputLayouts) },
+  { href: '/admin/layouts',       label: 'Output Presets', icon: '🖥️', show: (c: { canManageOutputLayouts?: boolean }) => Boolean(c.canManageOutputLayouts) },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -75,7 +75,15 @@ service cloud.firestore {
       // Rooms subcollection (Phase 5) — Contributor read-only for QR UI
       match /rooms/{roomId} {
         allow read: if canReadShow(showId);
-        allow create, update: if isAdminOrEditor() && isAssignedToShow(showId);
+        allow create: if isAdminOrEditor() && isAssignedToShow(showId);
+        // Admins/editors: full update. Tech: outputConfig only (Output Builder).
+        allow update: if isSignedIn() && isAssignedToShow(showId) && (
+          isAdminOrEditor()
+          || (
+            isTech()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['outputConfig'])
+          )
+        );
         allow delete: if isAdminOrEditor() && isAssignedToShow(showId);
       }
 
@@ -114,7 +122,7 @@ service cloud.firestore {
     }
 
     // ─────────────────────────────────────────────────────
-    // Output Layout Templates
+    // Output Presets (starting-point templates for room outputConfig)
     // ─────────────────────────────────────────────────────
 
     match /outputLayouts/{layoutId} {

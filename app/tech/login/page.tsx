@@ -5,10 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { signInWithCustomToken, signOut } from 'firebase/auth'
 import { getClientAuth } from '@/lib/firebase/client'
 import { setCookie } from '@/lib/utils/cookies'
+import { useAuthContext } from '@/context/AuthContext'
 
 function TechLoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { beginAuthTransition } = useAuthContext()
   const returnTo = searchParams.get('from') || '/tech'
   const errorParam = searchParams.get('error')
 
@@ -61,6 +63,9 @@ function TechLoginForm() {
       if (auth.currentUser) {
         await signOut(auth)
       }
+      // Hold Tech layout in loading until users/{uid} capabilities resolve.
+      // Must run after signOut — signOut's onAuthStateChanged sets loading=false.
+      beginAuthTransition()
       await signInWithCustomToken(auth, json.customToken)
       setCookie('onda-session', '1', 7)
 

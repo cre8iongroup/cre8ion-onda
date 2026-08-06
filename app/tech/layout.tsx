@@ -27,7 +27,10 @@ export default function TechLayout({ children }: { children: React.ReactNode }) 
       router.replace(`/tech/login?from=${encodeURIComponent(from)}`)
       return
     }
-    if (!capabilities?.canAccessTechPanel) {
+    // Wait until capabilities are loaded — null means still resolving users/{uid}.
+    // Treating null as denied caused bounce to ?error=unauthorized after custom-token login.
+    if (capabilities === null) return
+    if (!capabilities.canAccessTechPanel) {
       router.replace('/tech/login?error=unauthorized')
     }
   }, [user, capabilities, loading, router, isLogin, pathname])
@@ -36,7 +39,7 @@ export default function TechLayout({ children }: { children: React.ReactNode }) 
     return <>{children}</>
   }
 
-  if (loading || !user || !capabilities?.canAccessTechPanel) {
+  if (loading || !user || capabilities === null || !capabilities.canAccessTechPanel) {
     return (
       <div className="auth-shell">
         <span className="spinner" aria-label="Loading" />

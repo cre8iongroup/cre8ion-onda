@@ -6,6 +6,7 @@ import { signInWithCustomToken, signOut } from 'firebase/auth'
 import { getClientAuth } from '@/lib/firebase/client'
 import { setCookie } from '@/lib/utils/cookies'
 import { useAuthContext } from '@/context/AuthContext'
+import { clearTechCheckIn } from '@/lib/tech/checkIn'
 
 function TechLoginForm() {
   const router = useRouter()
@@ -68,6 +69,8 @@ function TechLoginForm() {
       beginAuthTransition()
       await signInWithCustomToken(auth, json.customToken)
       setCookie('onda-session', '1', 7)
+      // Fresh login starts at room check-in (unless returnTo deep-links a room).
+      clearTechCheckIn()
 
       const dest =
         returnTo.startsWith('/tech') && !returnTo.startsWith('/tech/login')

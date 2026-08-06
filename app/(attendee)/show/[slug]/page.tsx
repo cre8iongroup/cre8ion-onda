@@ -67,21 +67,16 @@ export default async function ShowHomePage({
                   className="attendee-quick-link"
                 >
                   {link.title}
+                  <span className="attendee-quick-link-external" aria-hidden>
+                    {' '}
+                    ↗
+                  </span>
                 </a>
               </li>
             ))}
           </ul>
         </section>
       ) : null}
-
-      <p className="attendee-sessions-link-row">
-        <Link href={`/show/${show.slug}/sessions`} className="attendee-sessions-link">
-          View all sessions
-        </Link>
-        {hasLiveRoom ? (
-          <span className="attendee-rooms-live-hint"> · Live now</span>
-        ) : null}
-      </p>
 
       <section className="attendee-rooms-section" aria-labelledby="attendee-rooms-heading">
         <h2 id="attendee-rooms-heading" className="attendee-section-label">
@@ -103,6 +98,9 @@ export default async function ShowHomePage({
                       <span className="attendee-room-live-badge">Live</span>
                     ) : null}
                     <span className="attendee-room-card-name">{room.name}</span>
+                    <span className="attendee-room-card-arrow" aria-hidden>
+                      →
+                    </span>
                   </Link>
                 </li>
               )
@@ -110,6 +108,15 @@ export default async function ShowHomePage({
           </ul>
         )}
       </section>
+
+      <p className="attendee-sessions-link-row">
+        <Link href={`/show/${show.slug}/sessions`} className="attendee-sessions-link">
+          View all sessions
+        </Link>
+        {hasLiveRoom ? (
+          <span className="attendee-rooms-live-hint"> · Live now</span>
+        ) : null}
+      </p>
 
       <AttendeeFooter eventTitle={show.name} legalNotice={show.legalNotice} />
     </AttendeeShell>

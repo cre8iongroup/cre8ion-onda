@@ -9,6 +9,7 @@ import { useAuthContext } from '@/context/AuthContext'
 import { renameRoomDualWrite } from '@/lib/rooms'
 import type { RoomDoc, ShowDoc, ShowRoom, WithId } from '@/types'
 import QrCodeCard from '@/app/admin/components/QrCodeCard'
+import ColorField from '@/components/ColorField'
 import { roomPublicUrl } from '@/lib/attendee/urls'
 
 export default function RoomEditClient({
@@ -158,22 +159,30 @@ export default function RoomEditClient({
             {!inherit ? (
               <>
                 <div className="field-row" style={{ flexWrap: 'wrap' }}>
-                  <div className="field">
-                    <label className="label">Background</label>
-                    <input type="color" className="input" value={backgroundColor} disabled={!canEdit || busy} onChange={(e) => setBackgroundColor(e.target.value)} />
-                  </div>
-                  <div className="field">
-                    <label className="label">Text</label>
-                    <input type="color" className="input" value={textColor} disabled={!canEdit || busy} onChange={(e) => setTextColor(e.target.value)} />
-                  </div>
-                  <div className="field">
-                    <label className="label">Accent 1</label>
-                    <input type="color" className="input" value={accent1} disabled={!canEdit || busy} onChange={(e) => setAccent1(e.target.value)} />
-                  </div>
-                  <div className="field">
-                    <label className="label">Accent 2</label>
-                    <input type="color" className="input" value={accent2} disabled={!canEdit || busy} onChange={(e) => setAccent2(e.target.value)} />
-                  </div>
+                  <ColorField
+                    label="Background"
+                    value={backgroundColor}
+                    disabled={!canEdit || busy}
+                    onChange={setBackgroundColor}
+                  />
+                  <ColorField
+                    label="Text"
+                    value={textColor}
+                    disabled={!canEdit || busy}
+                    onChange={setTextColor}
+                  />
+                  <ColorField
+                    label="Accent 1"
+                    value={accent1}
+                    disabled={!canEdit || busy}
+                    onChange={setAccent1}
+                  />
+                  <ColorField
+                    label="Accent 2"
+                    value={accent2}
+                    disabled={!canEdit || busy}
+                    onChange={setAccent2}
+                  />
                 </div>
                 <div className="field" style={{ marginTop: 'var(--space-4)' }}>
                   <label className="label">Room logo override</label>

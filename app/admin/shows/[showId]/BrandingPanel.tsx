@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { doc, updateDoc } from 'firebase/firestore'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { getClientFirestore, getClientStorage } from '@/lib/firebase/client'
@@ -11,97 +11,8 @@ import {
   DEFAULT_TEXT_COLOR,
   syncAccentFields,
 } from '@/lib/branding'
+import ColorField from '@/components/ColorField'
 import type { ShowBranding } from '@/types'
-
-function normalizeHex(raw: string): string | null {
-  const v = raw.trim()
-  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v.toLowerCase()
-  if (/^[0-9a-fA-F]{6}$/.test(v)) return `#${v.toLowerCase()}`
-  return null
-}
-
-function ColorField({
-  label,
-  value,
-  disabled,
-  onChange,
-}: {
-  label: string
-  value: string
-  disabled?: boolean
-  onChange: (hex: string) => void
-}) {
-  const id = useId()
-  const [text, setText] = useState(value)
-
-  useEffect(() => {
-    setText(value)
-  }, [value])
-
-  return (
-    <div className="field">
-      <label className="label" htmlFor={`${id}-hex`}>
-        {label}
-      </label>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <label
-          htmlFor={`${id}-swatch`}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            overflow: 'hidden',
-            border: '1px solid var(--color-border)',
-            flexShrink: 0,
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            display: 'block',
-            background: value,
-          }}
-          title={label}
-        >
-          <input
-            id={`${id}-swatch`}
-            type="color"
-            value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : '#000000'}
-            disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
-            style={{
-              opacity: 0,
-              width: '100%',
-              height: '100%',
-              border: 'none',
-              padding: 0,
-              cursor: 'inherit',
-            }}
-          />
-        </label>
-        <input
-          id={`${id}-hex`}
-          className="input"
-          value={text}
-          disabled={disabled}
-          spellCheck={false}
-          style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', maxWidth: 120 }}
-          onChange={(e) => {
-            const next = e.target.value
-            setText(next)
-            const hex = normalizeHex(next)
-            if (hex) onChange(hex)
-          }}
-          onBlur={() => {
-            const hex = normalizeHex(text)
-            if (hex) {
-              setText(hex)
-              onChange(hex)
-            } else {
-              setText(value)
-            }
-          }}
-        />
-      </div>
-    </div>
-  )
-}
 
 export default function BrandingPanel({
   showId,

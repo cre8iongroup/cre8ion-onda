@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { WhyOndaStoryCopy } from '@/components/whyOndaCopy'
 
 export type WhyOndaModalProps = {
   open: boolean
@@ -59,28 +60,7 @@ export function WhyOndaModal({ open, onClose }: WhyOndaModalProps) {
         </div>
 
         <div className="why-onda-body">
-          <p>
-            In Spanish, <em>onda</em> means wave.
-          </p>
-          <p>
-            Not the kind that crashes and recedes — the kind that travels. Sound moves in waves.
-            Story moves in waves. A voice carries what was given to it, adds what it has learned,
-            and sends it forward.
-          </p>
-          <p>
-            Long before words were written down, they were spoken. Carried person to person,
-            generation to generation, across mountains, rivers, and time. The oral traditions of
-            Latin America understood something the modern world is still learning: a story doesn&apos;t
-            belong to the person telling it. It belongs to everyone it has ever passed through, and
-            everyone it has yet to reach.
-          </p>
-          <p>
-            Every story is a wave. Each ripple bears witness as it folds into the raw potential of
-            a vast and unexplored ocean.
-          </p>
-          <p>
-            <em>Buena onda</em>
-          </p>
+          <WhyOndaStoryCopy />
         </div>
       </div>
     </div>,

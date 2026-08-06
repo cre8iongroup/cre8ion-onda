@@ -2,12 +2,9 @@
  * Regenerate all existing room/session QR codes for a show (or all shows).
  * Run AFTER App Hosting has the correct ONDA_PUBLIC_APP_URL / NEXT_PUBLIC_APP_URL.
  *
+ * Loads `.env.local` automatically.
+ *
  * Usage:
- *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json \
- *   NEXT_PUBLIC_FIREBASE_PROJECT_ID=cre8ion-onda \
- *   NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://cre8ion-onda-default-rtdb.firebaseio.com \
- *   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=cre8ion-onda.firebasestorage.app \
- *   ONDA_PUBLIC_APP_URL=https://cre8ion-onda.app \
  *   SHOW_ID=gXCOEu9gUyGQhNWRJCt7 \
  *   npx tsx scripts/regenerate-show-qrs.ts
  *
@@ -15,6 +12,9 @@
  *   DRY_RUN=1          — list targets only
  *   ONLY_EXISTING=0    — also generate for rooms/sessions that never had a QR
  */
+
+import { config as loadEnv } from 'dotenv'
+loadEnv({ path: '.env.local' })
 
 import { persistQrPair, qrTargetUrl } from '../lib/qr'
 import { getAdminFirestore } from '../lib/firebase/admin'

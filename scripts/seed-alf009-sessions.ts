@@ -1,8 +1,11 @@
 /**
  * One-off seed: ALPFA Convention 2026 sessions into the existing Show.
  *
- * Resolves rooms by name (reuse existing Room docs; create only when missing).
- * Does NOT create a Show. Does NOT write company / track / consentStatus.
+ * Resolves rooms by name against existing Room docs only — never creates Rooms
+ * or a Show. Aborts if any seed room name is missing or ambiguous.
+ * Does NOT write company / track / consentStatus.
+ *
+ * Also seeds one full-day AV test session per matched room (2026-08-07).
  *
  * Usage (dry-run — default):
  *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json \
@@ -11,13 +14,12 @@
  *   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=cre8ion-onda.firebasestorage.app \
  *   npx tsx scripts/seed-alf009-sessions.ts
  *
- * Apply writes (after reviewing dry-run output):
+ * Apply writes (after reviewing dry-run room match report):
  *   …same env… CONFIRM=1 npx tsx scripts/seed-alf009-sessions.ts
  *
  * Target project must be cre8ion-onda (not cre8ion-onda-503301).
  */
 
-import { randomUUID } from 'crypto'
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { getAdminFirestore, REQUIRED_FIREBASE_PROJECT_ID } from '../lib/firebase/admin'
 import type { ShowDoc, ShowRoom } from '../types'
@@ -25,6 +27,9 @@ import type { ShowDoc, ShowRoom } from '../types'
 const SHOW_NAME = 'ALPFA Convention 2026'
 const CREATED_BY = 'seed-alf009-sessions'
 const DEFAULT_TZ = 'America/New_York'
+const AV_TEST_DAY = '2026-08-07'
+const AV_TEST_START = '00:00'
+const AV_TEST_END = '23:59'
 
 /** Match lib/rooms.ts — keep local so this admin script does not import client SDK. */
 function normalizeRoomName(name: string): string {
@@ -35,7 +40,7 @@ function roomNameKey(name: string): string {
   return normalizeRoomName(name).toLowerCase()
 }
 
-type SeedGroup = 'visionStage' | 'exchangeStage' | 'infoSessionsAndWorkshops'
+type SeedGroup = 'visionStage' | 'exchangeStage' | 'infoSessionsAndWorkshops' | 'avTest'
 
 interface SeedEntry {
   title: string
@@ -150,25 +155,25 @@ const SEED = {
 
 type RoomPlan =
   | {
-      action: 'reuse'
+      action: 'matched'
       seedName: string
       normalized: string
       roomId: string
       existingName: string
       nameDisplayDiffers: boolean
+      source: string
     }
   | {
-      action: 'create'
+      action: 'missing'
       seedName: string
       normalized: string
-      roomId: string
     }
   | {
       action: 'ambiguous'
       seedName: string
       normalized: string
       reason: string
-      candidates: Array<{ id: string; name: string }>
+      candidates: Array<{ id: string; name: string; source: string }>
     }
 
 interface SessionPlan {
@@ -176,6 +181,7 @@ interface SessionPlan {
   title: string
   roomSeedName: string
   roomId: string | null
+  roomDisplayName: string
   scheduledStart: Date
   scheduledEnd: Date
 }
@@ -365,7 +371,7 @@ async function main() {
     `[seed-alf009] existing rooms: subcollection=${roomsSnap.size} denormalized=${denorm.length} merged=${byId.size}`,
   )
 
-  // ── Plan room resolutions ─────────────────────────────────────────
+  // ── Plan room resolutions (match existing only — never create) ────
   const roomPlans: RoomPlan[] = []
   for (const seedName of uniqueSeedRoomNames()) {
     const key = roomNameKey(seedName)
@@ -378,7 +384,7 @@ async function main() {
         seedName,
         normalized,
         reason: `Multiple existing rooms share roomNameKey ${JSON.stringify(key)}`,
-        candidates: hits.map((h) => ({ id: h.id, name: h.name })),
+        candidates: hits.map((h) => ({ id: h.id, name: h.name, source: h.source })),
       })
       continue
     }
@@ -386,63 +392,117 @@ async function main() {
     if (hits.length === 1) {
       const hit = hits[0]
       roomPlans.push({
-        action: 'reuse',
+        action: 'matched',
         seedName,
         normalized,
         roomId: hit.id,
         existingName: hit.name,
         nameDisplayDiffers: hit.name !== normalized,
+        source: hit.source,
       })
       continue
     }
 
-    // No roomNameKey match → create. Case / trailing-space variants already
-    // collapse via roomNameKey and would have hit above; duplicate keys across
-    // existing docs are flagged as ambiguous.
     roomPlans.push({
-      action: 'create',
+      action: 'missing',
       seedName,
       normalized,
-      roomId: randomUUID(),
     })
   }
 
-  const ambiguousRooms = roomPlans.filter((p) => p.action === 'ambiguous')
-  if (ambiguousRooms.length > 0) {
-    console.error('[seed-alf009] AMBIGUOUS room matches — refusing to continue:')
-    for (const p of ambiguousRooms) {
+  // Always print the full room match report before any abort / write.
+  const matched = roomPlans.filter((p): p is Extract<RoomPlan, { action: 'matched' }> => p.action === 'matched')
+  const missing = roomPlans.filter((p) => p.action === 'missing')
+  const ambiguous = roomPlans.filter((p) => p.action === 'ambiguous')
+
+  console.log('\n========== ROOM MATCH REPORT ==========')
+  console.log(`Seed unique rooms: ${roomPlans.length}`)
+  console.log(`Matched: ${matched.length}  Missing: ${missing.length}  Ambiguous: ${ambiguous.length}`)
+  console.log('--- Matched (seed name → existing Room) ---')
+  for (const p of matched) {
+    const note = p.nameDisplayDiffers
+      ? ` ⚠ display differs: seed=${JSON.stringify(p.normalized)} stored=${JSON.stringify(p.existingName)}`
+      : ''
+    console.log(
+      `  MATCH  seed=${JSON.stringify(p.seedName)} → id=${p.roomId} ` +
+        `name=${JSON.stringify(p.existingName)} source=${p.source}${note}`,
+    )
+  }
+  if (missing.length > 0) {
+    console.log('--- Missing (no existing Room) ---')
+    for (const p of missing) {
+      if (p.action !== 'missing') continue
+      console.log(`  MISSING seed=${JSON.stringify(p.seedName)} normalized=${JSON.stringify(p.normalized)}`)
+    }
+  }
+  if (ambiguous.length > 0) {
+    console.log('--- Ambiguous ---')
+    for (const p of ambiguous) {
       if (p.action !== 'ambiguous') continue
-      console.error(`  seed=${JSON.stringify(p.seedName)} reason=${p.reason}`)
+      console.log(`  AMBIGUOUS seed=${JSON.stringify(p.seedName)} reason=${p.reason}`)
       for (const c of p.candidates) {
-        console.error(`    id=${c.id} name=${JSON.stringify(c.name)}`)
+        console.log(`    id=${c.id} name=${JSON.stringify(c.name)} source=${c.source}`)
       }
     }
-    throw new Error(`Ambiguous room matches (${ambiguousRooms.length}). Resolve manually, then re-run.`)
+  }
+  console.log('Existing rooms on show (for sanity):')
+  for (const room of [...byId.values()].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+  )) {
+    console.log(`  id=${room.id} name=${JSON.stringify(room.name)} source=${room.source}`)
+  }
+  console.log('=======================================\n')
+
+  if (missing.length > 0 || ambiguous.length > 0) {
+    throw new Error(
+      `Room resolution failed: missing=${missing.length} ambiguous=${ambiguous.length}. ` +
+        `No writes performed. Fix room names in Firestore or seed data, then re-run.`,
+    )
   }
 
   const roomIdBySeedKey = new Map<string, string>()
-  for (const p of roomPlans) {
-    if (p.action === 'reuse' || p.action === 'create') {
-      roomIdBySeedKey.set(roomNameKey(p.seedName), p.roomId)
-    }
+  const roomDisplayById = new Map<string, string>()
+  for (const p of matched) {
+    roomIdBySeedKey.set(roomNameKey(p.seedName), p.roomId)
+    roomDisplayById.set(p.roomId, p.existingName)
   }
 
-  // ── Plan sessions ─────────────────────────────────────────────────
+  // ── Plan schedule sessions ────────────────────────────────────────
   const sessionPlans: SessionPlan[] = []
   for (const entry of allSeedEntries()) {
     const start = zonedDateTimeToUtc(entry.day, entry.start, timeZone)
     const end = zonedDateTimeToUtc(entry.day, entry.end, timeZone)
     if (!(end > start)) {
-      throw new Error(`Session end must be after start: ${entry.title} (${entry.day} ${entry.start}-${entry.end})`)
+      throw new Error(
+        `Session end must be after start: ${entry.title} (${entry.day} ${entry.start}-${entry.end})`,
+      )
     }
     const roomId = roomIdBySeedKey.get(roomNameKey(entry.room)) ?? null
+    const roomDisplayName = roomId ? roomDisplayById.get(roomId) ?? normalizeRoomName(entry.room) : normalizeRoomName(entry.room)
     sessionPlans.push({
       group: entry.group,
       title: entry.title,
       roomSeedName: normalizeRoomName(entry.room),
       roomId,
+      roomDisplayName,
       scheduledStart: start,
       scheduledEnd: end,
+    })
+  }
+
+  // ── Plan one AV test session per matched room ─────────────────────
+  const avStart = zonedDateTimeToUtc(AV_TEST_DAY, AV_TEST_START, timeZone)
+  const avEnd = zonedDateTimeToUtc(AV_TEST_DAY, AV_TEST_END, timeZone)
+  for (const p of matched) {
+    const title = `${p.existingName} AV Test`
+    sessionPlans.push({
+      group: 'avTest',
+      title,
+      roomSeedName: p.normalized,
+      roomId: p.roomId,
+      roomDisplayName: p.existingName,
+      scheduledStart: avStart,
+      scheduledEnd: avEnd,
     })
   }
 
@@ -452,80 +512,50 @@ async function main() {
   }
 
   // ── Dry-run summary ───────────────────────────────────────────────
-  const reuse = roomPlans.filter((p) => p.action === 'reuse')
-  const create = roomPlans.filter((p) => p.action === 'create')
   const byGroup = {
     visionStage: sessionPlans.filter((s) => s.group === 'visionStage').length,
     exchangeStage: sessionPlans.filter((s) => s.group === 'exchangeStage').length,
     infoSessionsAndWorkshops: sessionPlans.filter((s) => s.group === 'infoSessionsAndWorkshops')
       .length,
+    avTest: sessionPlans.filter((s) => s.group === 'avTest').length,
   }
 
   console.log('\n========== DRY-RUN SUMMARY ==========')
   console.log(`Show: ${SHOW_NAME} (${showId})`)
   console.log(`Timezone: ${timeZone}`)
   console.log(`Session languages: ${JSON.stringify(languages)}`)
+  console.log(`Rooms matched: ${matched.length} (no creates)`)
   console.log(`Sessions total: ${sessionPlans.length}`)
   console.log(`  visionStage: ${byGroup.visionStage}`)
   console.log(`  exchangeStage: ${byGroup.exchangeStage}`)
   console.log(`  infoSessionsAndWorkshops: ${byGroup.infoSessionsAndWorkshops}`)
-  console.log(`Rooms to reuse (existing): ${reuse.length}`)
-  for (const p of reuse) {
-    if (p.action !== 'reuse') continue
-    const note = p.nameDisplayDiffers
-      ? ` ⚠ stored name differs: ${JSON.stringify(p.existingName)}`
-      : ''
-    console.log(`  REUSE  ${JSON.stringify(p.normalized)} → ${p.roomId}${note}`)
-  }
-  console.log(`Rooms to create: ${create.length}`)
-  for (const p of create) {
-    if (p.action !== 'create') continue
-    console.log(`  CREATE ${JSON.stringify(p.normalized)} → ${p.roomId}`)
+  console.log(`  avTest (${AV_TEST_DAY} ${AV_TEST_START}–${AV_TEST_END}): ${byGroup.avTest}`)
+  console.log('AV test sessions:')
+  for (const s of sessionPlans.filter((x) => x.group === 'avTest')) {
+    console.log(
+      `  ${JSON.stringify(s.title)} → roomId=${s.roomId} ` +
+        `(${s.scheduledStart.toISOString()} → ${s.scheduledEnd.toISOString()})`,
+    )
   }
   console.log('Session field mapping (every session):')
   console.log('  title, friendlyName(=title), roomId, scheduledStart, scheduledEnd,')
   console.log("  languages, isDraft:false, feedState:'standby', approvalState:{},")
   console.log(`  createdAt:serverTimestamp, createdBy:'${CREATED_BY}'`)
   console.log('  (company / track / consentStatus intentionally omitted)')
+  console.log('  (no Room documents will be created)')
   console.log('=====================================\n')
 
   if (!confirm) {
     console.log(
-      '[seed-alf009] Dry-run only. Re-run with CONFIRM=1 after reviewing the summary to write.',
+      '[seed-alf009] Dry-run only. Re-run with CONFIRM=1 after reviewing the room match report to write.',
     )
     return
   }
 
-  // ── Writes ────────────────────────────────────────────────────────
-  let roomsCreated = 0
-  let roomsReused = reuse.length
+  // ── Writes (sessions only) ────────────────────────────────────────
   let sessionsCreated = 0
 
-  // Create missing rooms + dual-write ShowDoc.rooms[]
-  const nextRooms: ShowRoom[] = denorm
-    .filter((r): r is ShowRoom => Boolean(r?.id && typeof r.name === 'string'))
-    .map((r) => ({ id: r.id, name: r.name }))
-
-  for (const p of create) {
-    if (p.action !== 'create') continue
-    const roomRef = fs.doc(`shows/${showId}/rooms/${p.roomId}`)
-    await roomRef.set({
-      name: p.normalized,
-      branding: { inherit: true },
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: CREATED_BY,
-    })
-    nextRooms.push({ id: p.roomId, name: p.normalized })
-    roomsCreated++
-    console.log(`[seed-alf009] created room ${p.roomId} (${p.normalized})`)
-  }
-
-  if (roomsCreated > 0) {
-    await fs.doc(`shows/${showId}`).update({ rooms: nextRooms })
-    console.log(`[seed-alf009] updated ShowDoc.rooms[] (now ${nextRooms.length} entries)`)
-  }
-
-  // Session writes — Firestore batch limit 500; 92 fits in one batch.
+  // Firestore batch limit 500; 92 schedule + ~14 AV tests fits in one batch.
   const batch = fs.batch()
   const sessionsCol = fs.collection(`shows/${showId}/sessions`)
   for (const s of sessionPlans) {
@@ -550,8 +580,8 @@ async function main() {
 
   console.log('\n========== WRITE RESULT ==========')
   console.log(`sessions created: ${sessionsCreated}`)
-  console.log(`rooms created:    ${roomsCreated}`)
-  console.log(`rooms reused:     ${roomsReused}`)
+  console.log(`rooms created:    0 (match-only)`)
+  console.log(`rooms matched:    ${matched.length}`)
   console.log('==================================\n')
 }
 

@@ -486,6 +486,8 @@
   margin: 0;
   font-size: var(--caption-size);
   line-height: 1.45;
+  /* Override globals.css `p { color: … }` so captions use show branding */
+  color: var(--attendee-text, #f0f0fa);
   transition: opacity 0.2s ease, color 0.2s ease;
 }
 

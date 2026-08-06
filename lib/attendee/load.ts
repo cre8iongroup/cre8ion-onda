@@ -17,6 +17,7 @@ import type {
   EffectiveBranding,
   FeedState,
   RoomDoc,
+  RoomOutputConfig,
   SessionDoc,
   ShowBranding,
   ShowDoc,
@@ -58,6 +59,8 @@ export type PublicRoom = {
   show: Pick<PublicShow, 'id' | 'name' | 'slug' | 'showTimezone' | 'branding' | 'legalNotice'>
   sessions: PublicSession[]
   liveSession: PublicSession | null
+  /** Present when set on the room doc — used by Output Windows SSR seed. */
+  outputConfig?: RoomOutputConfig | null
 }
 
 function timestampToMs(value: unknown): number {
@@ -206,6 +209,10 @@ export async function loadPublicRoomById(roomId: string): Promise<PublicRoom | n
 
   const sessions = await loadPublicSessionsForRoom(showId, id)
   const liveSession = sessions.find((s) => s.feedState === 'live') ?? null
+  const outputConfig =
+    roomData.outputConfig && Array.isArray(roomData.outputConfig.windows)
+      ? roomData.outputConfig
+      : null
 
   return {
     id,
@@ -222,6 +229,7 @@ export async function loadPublicRoomById(roomId: string): Promise<PublicRoom | n
     },
     sessions,
     liveSession,
+    outputConfig,
   }
 }
 

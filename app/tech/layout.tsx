@@ -8,6 +8,7 @@ import { portalSlugFromTechEmail } from '@/lib/tech/credentials'
 
 const TECH_NAV = [
   { href: '/tech', label: 'Sessions', icon: '📡' },
+  { href: '/tech/output', label: 'Output', icon: '🖥️' },
   { href: '/tech/network', label: 'Network', icon: '🌐' },
 ]
 

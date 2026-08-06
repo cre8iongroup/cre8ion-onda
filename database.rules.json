@@ -20,6 +20,14 @@
         }
       }
     },
+    // Room output config live mirror (Output Builder → Output Windows).
+    // Separate from liveSessions — session-end cleanup must not delete this tree.
+    "outputLive": {
+      "$roomId": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
     // recordingId → sessionId index for Recall Svix lifecycle webhooks (Admin only)
     "recordingIndex": {
       "$recordingId": {

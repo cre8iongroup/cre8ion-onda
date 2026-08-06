@@ -1,17 +1,19 @@
 'use client'
 
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { addDoc, collection, Timestamp } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
-import type {
-  BackgroundType,
-  CaptionLayout,
-  FontSize,
-  OutputLayoutDoc,
-} from '@/types'
+import {
+  DEFAULT_OUTPUT_BACKGROUND,
+  DEFAULT_OUTPUT_FONT_SIZE_PX,
+  OUTPUT_BUILDER_WINDOW_COUNT,
+  OUTPUT_CHROMA_GREEN,
+  sanitizeOutputWindows,
+} from '@/lib/output/defaults'
+import type { OutputLayoutDoc } from '@/types'
 
 const LANGS = [
   { value: 'en', label: 'English' },
@@ -20,28 +22,25 @@ const LANGS = [
   { value: 'fr', label: 'French' },
 ]
 
-const createLayoutSchema = z.object({
-  name: z.string().trim().min(2, 'Layout name is required'),
-  primaryLanguage: z.string().min(1, 'Primary language is required'),
-  secondaryLanguage: z.string().optional(),
-  fontSize: z.enum(['small', 'medium', 'large', 'xlarge']),
-  backgroundType: z.enum(['black', 'white', 'chromaKey', 'custom']),
-  backgroundColor: z.string().optional(),
-  layout: z.enum(['stacked', 'sideBySide']),
-  textColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Use a hex color like #FFFFFF'),
-  showSpeakerLabels: z.boolean(),
-}).refine(
-  (data) => {
-    if (data.backgroundType !== 'custom') return true
-    return Boolean(data.backgroundColor && /^#[0-9A-Fa-f]{6}$/.test(data.backgroundColor))
-  },
-  { message: 'Custom background requires a hex color', path: ['backgroundColor'] }
-).refine(
-  (data) => !data.secondaryLanguage || data.secondaryLanguage !== data.primaryLanguage,
-  { message: 'Secondary language must differ from primary', path: ['secondaryLanguage'] }
-)
+const BG_SWATCHES = [
+  { value: '#000000', label: 'Black' },
+  { value: '#FFFFFF', label: 'White' },
+  { value: OUTPUT_CHROMA_GREEN, label: 'Chroma key' },
+]
 
-type CreateLayoutFormValues = z.infer<typeof createLayoutSchema>
+const windowSchema = z.object({
+  language: z.string(), // '' = unset; converted to null on submit
+  fontSize: z.number().min(12).max(200),
+  backgroundColor: z.string().trim().min(1, 'Background is required'),
+  textColor: z.string().optional(),
+})
+
+const createPresetSchema = z.object({
+  name: z.string().trim().min(2, 'Preset name is required'),
+  windows: z.array(windowSchema).min(1),
+})
+
+type CreatePresetFormValues = z.infer<typeof createPresetSchema>
 
 interface CreateLayoutModalProps {
   open: boolean
@@ -49,6 +48,25 @@ interface CreateLayoutModalProps {
   onCreated: (layoutId: string) => void
   createdBy: string
   canCreate: boolean
+}
+
+function emptyWindow(language: string): CreatePresetFormValues['windows'][number] {
+  return {
+    language,
+    fontSize: DEFAULT_OUTPUT_FONT_SIZE_PX,
+    backgroundColor: DEFAULT_OUTPUT_BACKGROUND,
+    textColor: '',
+  }
+}
+
+function defaultFormValues(): CreatePresetFormValues {
+  return {
+    name: '',
+    windows: [
+      emptyWindow('en'),
+      ...Array.from({ length: OUTPUT_BUILDER_WINDOW_COUNT - 1 }, () => emptyWindow('')),
+    ],
+  }
 }
 
 export default function CreateLayoutModal({
@@ -60,45 +78,27 @@ export default function CreateLayoutModal({
 }: CreateLayoutModalProps) {
   const titleId = useId()
   const nameRef = useRef<HTMLInputElement | null>(null)
+  const [rootError, setRootError] = useState<string | null>(null)
 
   const {
     register,
     handleSubmit,
     reset,
     watch,
-    setError,
+    setValue,
     formState: { errors, isSubmitting },
-  } = useForm<CreateLayoutFormValues>({
-    resolver: zodResolver(createLayoutSchema),
-    defaultValues: {
-      name: '',
-      primaryLanguage: 'en',
-      secondaryLanguage: 'es',
-      fontSize: 'large',
-      backgroundType: 'black',
-      backgroundColor: '#00FF00',
-      layout: 'stacked',
-      textColor: '#FFFFFF',
-      showSpeakerLabels: false,
-    },
+  } = useForm<CreatePresetFormValues>({
+    resolver: zodResolver(createPresetSchema),
+    defaultValues: defaultFormValues(),
   })
 
   const { ref: nameRegisterRef, ...nameRegister } = register('name')
-  const backgroundType = watch('backgroundType')
+  const windows = watch('windows')
 
   useEffect(() => {
     if (!open) return
-    reset({
-      name: '',
-      primaryLanguage: 'en',
-      secondaryLanguage: 'es',
-      fontSize: 'large',
-      backgroundType: 'black',
-      backgroundColor: '#00FF00',
-      layout: 'stacked',
-      textColor: '#FFFFFF',
-      showSpeakerLabels: false,
-    })
+    reset(defaultFormValues())
+    setRootError(null)
     const t = window.setTimeout(() => nameRef.current?.focus(), 50)
     return () => window.clearTimeout(t)
   }, [open, reset])
@@ -114,24 +114,25 @@ export default function CreateLayoutModal({
 
   if (!open) return null
 
-  async function onSubmit(values: CreateLayoutFormValues) {
+  async function onSubmit(values: CreatePresetFormValues) {
     if (!canCreate) {
-      setError('root', { message: 'You do not have permission to manage layouts.' })
+      setRootError('You do not have permission to manage output presets.')
       return
     }
 
     try {
+      const sanitized = sanitizeOutputWindows(
+        values.windows.map((w) => ({
+          language: w.language && w.language.trim() ? w.language.trim() : null,
+          fontSize: w.fontSize,
+          backgroundColor: w.backgroundColor,
+          ...(w.textColor && w.textColor.trim() ? { textColor: w.textColor.trim() } : {}),
+        })),
+      )
+
       const payload: OutputLayoutDoc = {
         name: values.name.trim(),
-        primaryLanguage: values.primaryLanguage,
-        secondaryLanguage: values.secondaryLanguage || undefined,
-        fontSize: values.fontSize as FontSize,
-        backgroundType: values.backgroundType as BackgroundType,
-        backgroundColor:
-          values.backgroundType === 'custom' ? values.backgroundColor : undefined,
-        layout: values.layout as CaptionLayout,
-        textColor: values.textColor.toUpperCase(),
-        showSpeakerLabels: values.showSpeakerLabels,
+        windows: sanitized,
         createdBy,
         createdAt: Timestamp.now(),
       }
@@ -140,11 +141,9 @@ export default function CreateLayoutModal({
       const ref = await addDoc(collection(fs, 'outputLayouts'), payload)
       onCreated(ref.id)
       onClose()
-    } catch (err: any) {
-      console.error('CreateLayoutModal: failed to create layout', err)
-      setError('root', {
-        message: err?.message || 'Failed to create layout. Please try again.',
-      })
+    } catch (err: unknown) {
+      console.error('CreateLayoutModal: failed to create preset', err)
+      setRootError(err instanceof Error ? err.message : 'Failed to create preset. Please try again.')
     }
   }
 
@@ -160,10 +159,10 @@ export default function CreateLayoutModal({
         <div className="modal-header">
           <div>
             <h2 id={titleId} style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-1)' }}>
-              Create Output Layout
+              Create Output Preset
             </h2>
             <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              Templates for attendee captions and output feeds.
+              Starting-point window configs applied once in the Output Builder.
             </p>
           </div>
           <button
@@ -180,11 +179,11 @@ export default function CreateLayoutModal({
 
         <form className="form-group" onSubmit={handleSubmit(onSubmit)} noValidate>
           <div className="field">
-            <label htmlFor="layout-name" className="label">Name</label>
+            <label htmlFor="preset-name" className="label">Name</label>
             <input
-              id="layout-name"
+              id="preset-name"
               className={`input ${errors.name ? 'error' : ''}`}
-              placeholder="Main Stage Dual Caption"
+              placeholder="Two Window - Basic"
               disabled={isSubmitting}
               {...nameRegister}
               ref={(el) => {
@@ -195,119 +194,104 @@ export default function CreateLayoutModal({
             {errors.name && <p className="field-error">{errors.name.message}</p>}
           </div>
 
-          <div className="field-row">
-            <div className="field">
-              <label htmlFor="layout-primary-lang" className="label">Primary language</label>
-              <select
-                id="layout-primary-lang"
-                className={`input ${errors.primaryLanguage ? 'error' : ''}`}
-                disabled={isSubmitting}
-                {...register('primaryLanguage')}
-              >
-                {LANGS.map((l) => (
-                  <option key={l.value} value={l.value}>{l.label}</option>
-                ))}
-              </select>
-              {errors.primaryLanguage && <p className="field-error">{errors.primaryLanguage.message}</p>}
-            </div>
-            <div className="field">
-              <label htmlFor="layout-secondary-lang" className="label">Secondary language</label>
-              <select
-                id="layout-secondary-lang"
-                className={`input ${errors.secondaryLanguage ? 'error' : ''}`}
-                disabled={isSubmitting}
-                {...register('secondaryLanguage')}
-              >
-                <option value="">None</option>
-                {LANGS.map((l) => (
-                  <option key={l.value} value={l.value}>{l.label}</option>
-                ))}
-              </select>
-              {errors.secondaryLanguage && <p className="field-error">{errors.secondaryLanguage.message}</p>}
-            </div>
-          </div>
+          {(windows || []).map((_, index) => (
+            <fieldset
+              key={index}
+              style={{
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                padding: 'var(--space-4)',
+                marginBottom: 'var(--space-4)',
+              }}
+            >
+              <legend className="label" style={{ padding: '0 var(--space-2)' }}>
+                Window {index + 1}
+              </legend>
 
-          <div className="field-row">
-            <div className="field">
-              <label htmlFor="layout-arrangement" className="label">Caption layout</label>
-              <select
-                id="layout-arrangement"
-                className="input"
-                disabled={isSubmitting}
-                {...register('layout')}
-              >
-                <option value="stacked">Stacked</option>
-                <option value="sideBySide">Side by side</option>
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="layout-font-size" className="label">Font size</label>
-              <select
-                id="layout-font-size"
-                className="input"
-                disabled={isSubmitting}
-                {...register('fontSize')}
-              >
-                <option value="small">Small</option>
-                <option value="medium">Medium</option>
-                <option value="large">Large</option>
-                <option value="xlarge">X-Large</option>
-              </select>
-            </div>
-          </div>
+              <div className="field-row">
+                <div className="field">
+                  <label htmlFor={`preset-lang-${index}`} className="label">Language</label>
+                  <select
+                    id={`preset-lang-${index}`}
+                    className="input"
+                    disabled={isSubmitting}
+                    {...register(`windows.${index}.language`)}
+                  >
+                    <option value="">Unset</option>
+                    {LANGS.map((l) => (
+                      <option key={l.value} value={l.value}>{l.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor={`preset-font-${index}`} className="label">Font size (px)</label>
+                  <input
+                    id={`preset-font-${index}`}
+                    type="number"
+                    min={12}
+                    max={200}
+                    className={`input ${errors.windows?.[index]?.fontSize ? 'error' : ''}`}
+                    disabled={isSubmitting}
+                    {...register(`windows.${index}.fontSize`, { valueAsNumber: true })}
+                  />
+                </div>
+              </div>
 
-          <div className="field-row">
-            <div className="field">
-              <label htmlFor="layout-bg-type" className="label">Background</label>
-              <select
-                id="layout-bg-type"
-                className="input"
-                disabled={isSubmitting}
-                {...register('backgroundType')}
-              >
-                <option value="black">Black</option>
-                <option value="white">White</option>
-                <option value="chromaKey">Chroma key</option>
-                <option value="custom">Custom color</option>
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="layout-text-color" className="label">Text color</label>
-              <input
-                id="layout-text-color"
-                className={`input ${errors.textColor ? 'error' : ''}`}
-                placeholder="#FFFFFF"
-                disabled={isSubmitting}
-                {...register('textColor')}
-              />
-              {errors.textColor && <p className="field-error">{errors.textColor.message}</p>}
-            </div>
-          </div>
+              <div className="field-row">
+                <div className="field">
+                  <label htmlFor={`preset-bg-${index}`} className="label">Background</label>
+                  <div className="flex gap-2" style={{ flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
+                    {BG_SWATCHES.map((s) => (
+                      <button
+                        key={s.value}
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={isSubmitting}
+                        onClick={() => setValue(`windows.${index}.backgroundColor`, s.value, { shouldDirty: true })}
+                        title={s.label}
+                      >
+                        <span
+                          aria-hidden
+                          style={{
+                            display: 'inline-block',
+                            width: 14,
+                            height: 14,
+                            borderRadius: 3,
+                            background: s.value,
+                            border: '1px solid var(--color-border)',
+                            marginRight: 6,
+                            verticalAlign: 'middle',
+                          }}
+                        />
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    id={`preset-bg-${index}`}
+                    className={`input ${errors.windows?.[index]?.backgroundColor ? 'error' : ''}`}
+                    placeholder="#000000"
+                    disabled={isSubmitting}
+                    {...register(`windows.${index}.backgroundColor`)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor={`preset-text-${index}`} className="label">Text color (optional)</label>
+                  <input
+                    id={`preset-text-${index}`}
+                    className="input"
+                    placeholder="Inherit from brand if empty"
+                    disabled={isSubmitting}
+                    {...register(`windows.${index}.textColor`)}
+                  />
+                </div>
+              </div>
+            </fieldset>
+          ))}
 
-          {backgroundType === 'custom' && (
-            <div className="field">
-              <label htmlFor="layout-bg-color" className="label">Background color</label>
-              <input
-                id="layout-bg-color"
-                className={`input ${errors.backgroundColor ? 'error' : ''}`}
-                placeholder="#00FF00"
-                disabled={isSubmitting}
-                {...register('backgroundColor')}
-              />
-              {errors.backgroundColor && <p className="field-error">{errors.backgroundColor.message}</p>}
-            </div>
-          )}
-
-          <div className="field">
-            <label className="checkbox-row">
-              <input type="checkbox" disabled={isSubmitting} {...register('showSpeakerLabels')} />
-              <span>Show speaker labels on output</span>
-            </label>
-          </div>
-
-          {errors.root && (
+          {rootError && (
             <div className="alert alert-error" role="alert">
-              {errors.root.message}
+              {rootError}
             </div>
           )}
 
@@ -333,7 +317,7 @@ export default function CreateLayoutModal({
                   Creating…
                 </>
               ) : (
-                'Create Layout'
+                'Create Preset'
               )}
             </button>
           </div>

@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
+import { isOutputPresetDoc } from '@/lib/output/defaults'
 import type { OutputLayoutDoc, WithId } from '@/types'
 import CreateLayoutModal from './CreateLayoutModal'
 
@@ -19,28 +20,21 @@ const LANG_LABELS: Record<string, string> = {
   fr: 'French',
 }
 
-function langLabel(code: string): string {
+function langLabel(code: string | null): string {
+  if (!code) return 'Unset'
   return LANG_LABELS[code] || code
 }
 
-function bgPreview(layout: OutputLayoutDoc): string {
-  switch (layout.backgroundType) {
-    case 'black':
-      return '#000000'
-    case 'white':
-      return '#FFFFFF'
-    case 'chromaKey':
-      return '#00FF00'
-    case 'custom':
-      return layout.backgroundColor || '#333333'
-    default:
-      return '#000000'
-  }
+function windowSummary(layout: OutputLayoutDoc): string {
+  return layout.windows
+    .map((w, i) => `W${i + 1}: ${langLabel(w.language)} · ${w.fontSize}px`)
+    .join(' · ')
 }
 
 export default function LayoutsDashboard() {
   const { user, capabilities } = useAuthContext()
   const [layouts, setLayouts] = useState<WithId<OutputLayoutDoc>[]>([])
+  const [legacyCount, setLegacyCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -54,13 +48,24 @@ export default function LayoutsDashboard() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setLayouts(snap.docs.map((d) => ({ id: d.id, ...(d.data() as OutputLayoutDoc) })))
+        const next: WithId<OutputLayoutDoc>[] = []
+        let legacy = 0
+        for (const d of snap.docs) {
+          const data = d.data()
+          if (isOutputPresetDoc(data)) {
+            next.push({ id: d.id, ...(data as OutputLayoutDoc) })
+          } else {
+            legacy += 1
+          }
+        }
+        setLayouts(next)
+        setLegacyCount(legacy)
         setError(null)
         setLoading(false)
       },
       (err) => {
-        console.error('LayoutsDashboard: failed to load layouts', err)
-        setError(err.message || 'Failed to load output layouts.')
+        console.error('LayoutsDashboard: failed to load presets', err)
+        setError(err.message || 'Failed to load output presets.')
         setLoading(false)
       }
     )
@@ -75,7 +80,7 @@ export default function LayoutsDashboard() {
 
   const openCreate = useCallback(() => {
     if (!canManage) {
-      setError('You do not have permission to manage output layouts.')
+      setError('You do not have permission to manage output presets.')
       return
     }
     setModalOpen(true)
@@ -89,9 +94,9 @@ export default function LayoutsDashboard() {
       >
         <div>
           <h1 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>
-            Output Layouts
+            Output Presets
           </h1>
-          <p>Templates for attendee captions and output feeds.</p>
+          <p>Starting-point window configs for the Output Builder. Applied once per room — never a live reference.</p>
         </div>
         {canManage && (
           <button
@@ -100,7 +105,7 @@ export default function LayoutsDashboard() {
             className="btn btn-primary"
             onClick={openCreate}
           >
-            + Create Layout
+            + Create Preset
           </button>
         )}
       </div>
@@ -117,9 +122,15 @@ export default function LayoutsDashboard() {
         </div>
       )}
 
+      {legacyCount > 0 && (
+        <div className="alert alert-warning" role="status" style={{ marginBottom: 'var(--space-6)' }}>
+          {legacyCount} legacy preset{legacyCount === 1 ? '' : 's'} hidden (pre-windows[] schema). Left in Firestore; not migrated.
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center" style={{ padding: 'var(--space-16)' }}>
-          <span className="spinner" aria-label="Loading layouts" />
+          <span className="spinner" aria-label="Loading presets" />
         </div>
       ) : layouts.length === 0 ? (
         <div
@@ -134,11 +145,10 @@ export default function LayoutsDashboard() {
             gap: 'var(--space-4)',
           }}
         >
-          <div style={{ fontSize: '3rem' }}>🖥️</div>
-          <h2 style={{ fontSize: 'var(--text-lg)' }}>No layouts yet</h2>
+          <h2 style={{ fontSize: 'var(--text-lg)' }}>No presets yet</h2>
           <p style={{ maxWidth: 380 }}>
-            Create an output layout template to control caption arrangement, languages, and
-            background for live feeds.
+            Create an output preset to pre-fill a room&apos;s window languages, font size, and colors
+            in the Output Builder.
           </p>
           <button
             id="btn-create-layout-empty"
@@ -148,11 +158,11 @@ export default function LayoutsDashboard() {
             onClick={openCreate}
             disabled={!canManage}
           >
-            + Create Layout
+            + Create Preset
           </button>
           {!canManage && (
             <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              Your account cannot manage output layouts.
+              Your account cannot manage output presets.
             </p>
           )}
         </div>
@@ -169,7 +179,7 @@ export default function LayoutsDashboard() {
                       height: 36,
                       borderRadius: 6,
                       border: '1px solid var(--color-border)',
-                      background: bgPreview(layout),
+                      background: layout.windows[0]?.backgroundColor || '#000',
                       flexShrink: 0,
                     }}
                   />
@@ -178,22 +188,13 @@ export default function LayoutsDashboard() {
                       {layout.name}
                     </h2>
                     <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                      {langLabel(layout.primaryLanguage)}
-                      {layout.secondaryLanguage
-                        ? ` + ${langLabel(layout.secondaryLanguage)}`
-                        : ''}
-                      {' · '}
-                      {layout.layout === 'sideBySide' ? 'Side by side' : 'Stacked'}
-                      {' · '}
-                      {layout.fontSize}
+                      {windowSummary(layout)}
                     </p>
                     <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
-                      {layout.backgroundType}
-                      {layout.showSpeakerLabels ? ' · speaker labels' : ''}
+                      {layout.windows.length} window{layout.windows.length === 1 ? '' : 's'}
                     </p>
                   </div>
                 </div>
-                <span className="badge badge-muted">{layout.textColor}</span>
               </div>
             </article>
           ))}
@@ -205,7 +206,7 @@ export default function LayoutsDashboard() {
         onClose={() => setModalOpen(false)}
         createdBy={user?.uid || ''}
         canCreate={canManage}
-        onCreated={() => setFlash('Layout created.')}
+        onCreated={() => setFlash('Preset created.')}
       />
     </div>
   )

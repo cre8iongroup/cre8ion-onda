@@ -41,6 +41,7 @@ export default async function ShowHomePage({
       .filter((s) => s.feedState === 'live' && s.roomId)
       .map((s) => s.roomId),
   )
+  const hasLiveRoom = liveRoomIds.size > 0
 
   return (
     <AttendeeShell branding={show.branding}>
@@ -50,26 +51,37 @@ export default async function ShowHomePage({
       ) : null}
       <h1 className="attendee-title">{show.name}</h1>
 
-      <section className="attendee-quick-links" aria-labelledby="attendee-quick-links-heading">
-        <div className="attendee-section-rule" aria-hidden />
-        <h2 id="attendee-quick-links-heading" className="attendee-section-label">
-          Quick Links
-        </h2>
-        <ul className="attendee-link-list">
-          <li>
-            <Link href={`/show/${show.slug}/sessions`} className="attendee-quick-link">
-              Attendee Hub
-            </Link>
-          </li>
-          {show.links.map((link) => (
-            <li key={`${link.order}-${link.url}`}>
-              <a href={link.url} target="_blank" rel="noopener noreferrer" className="attendee-quick-link">
-                {link.title}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {show.links.length > 0 ? (
+        <section className="attendee-quick-links" aria-labelledby="attendee-quick-links-heading">
+          <div className="attendee-section-rule" aria-hidden />
+          <h2 id="attendee-quick-links-heading" className="attendee-section-label">
+            Quick Links
+          </h2>
+          <ul className="attendee-link-list">
+            {show.links.map((link) => (
+              <li key={`${link.order}-${link.url}`}>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="attendee-quick-link"
+                >
+                  {link.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <p className="attendee-sessions-link-row">
+        <Link href={`/show/${show.slug}/sessions`} className="attendee-sessions-link">
+          View all sessions
+        </Link>
+        {hasLiveRoom ? (
+          <span className="attendee-rooms-live-hint"> · Live now</span>
+        ) : null}
+      </p>
 
       <section className="attendee-rooms-section" aria-labelledby="attendee-rooms-heading">
         <h2 id="attendee-rooms-heading" className="attendee-section-label">

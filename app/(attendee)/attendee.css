@@ -107,7 +107,31 @@
 }
 
 .attendee-quick-links {
-  margin: var(--space-6) 0 var(--space-10);
+  margin: var(--space-6) 0 var(--space-8);
+}
+
+.attendee-sessions-link-row {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-sm);
+}
+
+.attendee-sessions-link {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: var(--attendee-text, var(--color-text-primary));
+}
+
+.attendee-shell a.attendee-sessions-link {
+  color: var(--attendee-text, var(--color-text-primary));
+}
+
+.attendee-sessions-link:hover {
+  color: var(--attendee-accent, var(--color-primary));
+}
+
+.attendee-rooms-live-hint {
+  color: color-mix(in srgb, var(--attendee-text, #f0f0fa) 55%, transparent);
 }
 
 .attendee-rooms-section {
@@ -227,7 +251,7 @@
   margin: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
 @media (min-width: 900px) {
@@ -239,15 +263,22 @@
 .attendee-room-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  min-height: 5.5rem;
-  padding: var(--space-4);
+  gap: var(--space-3);
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+  padding: var(--space-5);
   border-radius: var(--radius-md);
   text-decoration: none;
   color: var(--attendee-text, var(--color-text-primary));
   background: color-mix(in srgb, var(--attendee-text, #fff) 6%, transparent);
   border: 1px solid color-mix(in srgb, var(--attendee-text, #fff) 12%, transparent);
   transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+/* Beat .attendee-shell a { color: accent } so labels use textColor by default */
+.attendee-shell a.attendee-room-card,
+.attendee-shell a.attendee-room-card .attendee-room-card-name {
+  color: var(--attendee-text, var(--color-text-primary));
 }
 
 .attendee-room-card:hover {
@@ -262,6 +293,7 @@
 
 .attendee-room-card-name {
   font-weight: 600;
+  font-size: clamp(0.95rem, 2.5vw, 1.1rem);
   line-height: 1.3;
   margin-top: auto;
 }

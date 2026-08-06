@@ -111,26 +111,35 @@
 }
 
 .attendee-sessions-link-row {
-  margin: var(--space-6) 0 0;
-  font-size: var(--text-sm);
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-8) 0;
 }
 
 .attendee-sessions-link {
+  display: block;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid color-mix(in srgb, var(--attendee-accent, #5b3aee) 45%, transparent);
+  border-radius: var(--radius-md);
+  text-decoration: none;
   font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
   color: var(--attendee-text, var(--color-text-primary));
+  background: color-mix(in srgb, var(--attendee-accent, #5b3aee) 12%, transparent);
 }
 
 .attendee-shell a.attendee-sessions-link {
   color: var(--attendee-text, var(--color-text-primary));
+  text-decoration: none;
 }
 
 .attendee-sessions-link:hover {
-  color: var(--attendee-accent, var(--color-primary));
+  background: color-mix(in srgb, var(--attendee-accent, #5b3aee) 22%, transparent);
+  color: var(--attendee-text, var(--color-text-primary));
 }
 
 .attendee-rooms-live-hint {
+  margin: 0;
+  font-size: var(--text-sm);
   color: color-mix(in srgb, var(--attendee-text, #f0f0fa) 55%, transparent);
 }
 
@@ -152,7 +161,6 @@
   margin-top: auto;
   padding-top: var(--space-8);
   margin-bottom: 0;
-  border-top: 1px solid color-mix(in srgb, var(--attendee-text, #fff) 12%, transparent);
   font-size: var(--text-sm);
   color: color-mix(in srgb, var(--attendee-text, #f0f0fa) 55%, transparent);
   text-align: center;

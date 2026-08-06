@@ -109,14 +109,14 @@ export default async function ShowHomePage({
         )}
       </section>
 
-      <p className="attendee-sessions-link-row">
+      <div className="attendee-sessions-link-row">
         <Link href={`/show/${show.slug}/sessions`} className="attendee-sessions-link">
           View all sessions
         </Link>
         {hasLiveRoom ? (
-          <span className="attendee-rooms-live-hint"> · Live now</span>
+          <p className="attendee-rooms-live-hint">Live now</p>
         ) : null}
-      </p>
+      </div>
 
       <AttendeeFooter eventTitle={show.name} legalNotice={show.legalNotice} />
     </AttendeeShell>

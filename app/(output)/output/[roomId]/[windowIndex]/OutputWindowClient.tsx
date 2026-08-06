@@ -241,6 +241,9 @@ export default function OutputWindowClient({
                   key={line.id}
                   style={{
                     margin: '0 0 0.35em',
+                    // Must set color on <p>: globals.css `p { color: … }` overrides
+                    // inherited color from the root (background is unaffected).
+                    color,
                     opacity: isLatest ? 1 : 0.72,
                     fontWeight: isLatest ? 600 : 400,
                   }}
@@ -249,8 +252,7 @@ export default function OutputWindowClient({
                 </p>
               )
             })
-          )}
-        </div>
+          )}        </div>
       ) : (
         <div
           style={{

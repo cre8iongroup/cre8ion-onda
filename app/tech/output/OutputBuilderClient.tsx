@@ -551,8 +551,21 @@ export default function OutputBuilderClient() {
                         onChange={(e) => updateWindow(index, { fontSize: Number(e.target.value) })}
                         aria-valuetext={`${w.fontSize} pixels`}
                       />
+                      <input
+                        id={`ow-font-num-${index}`}
+                        className="input output-builder-font-input"
+                        type="number"
+                        min={12}
+                        max={200}
+                        value={w.fontSize}
+                        aria-label={`Window ${index + 1} font size in pixels`}
+                        onChange={(e) => {
+                          const n = Number(e.target.value)
+                          if (Number.isFinite(n)) updateWindow(index, { fontSize: n })
+                        }}
+                      />
                       <span className="output-builder-font-value" aria-hidden>
-                        {w.fontSize}px
+                        px
                       </span>
                     </div>
                   </div>

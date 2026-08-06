@@ -111,7 +111,7 @@
 }
 
 .attendee-sessions-link-row {
-  margin: 0 0 var(--space-6);
+  margin: var(--space-6) 0 0;
   font-size: var(--text-sm);
 }
 
@@ -135,7 +135,7 @@
 }
 
 .attendee-rooms-section {
-  margin-bottom: var(--space-8);
+  margin-bottom: 0;
 }
 
 /* Legal stays after main content; powered-by is pushed to the container bottom. */
@@ -226,6 +226,11 @@
   background: color-mix(in srgb, var(--attendee-accent, #5b3aee) 22%, transparent);
 }
 
+.attendee-quick-link-external {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
 .attendee-entry-list {
   list-style: none;
   padding: 0;
@@ -256,11 +261,12 @@
 
 @media (min-width: 900px) {
   .attendee-room-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 .attendee-room-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -296,6 +302,26 @@
   font-size: clamp(0.95rem, 2.5vw, 1.1rem);
   line-height: 1.3;
   margin-top: auto;
+  padding-right: 1.75rem;
+}
+
+.attendee-room-card-arrow {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--attendee-text, var(--color-text-primary));
+  opacity: 0.7;
+}
+
+.attendee-shell a.attendee-room-card .attendee-room-card-arrow {
+  color: var(--attendee-text, var(--color-text-primary));
+}
+
+.attendee-room-card:hover .attendee-room-card-arrow {
+  opacity: 1;
+  color: var(--attendee-accent, var(--color-primary));
 }
 
 .attendee-room-live-badge {

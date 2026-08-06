@@ -25,6 +25,12 @@ export interface AuthActions {
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
+  /**
+   * Mark auth as loading before an out-of-band sign-in (e.g. custom token)
+   * so layout gates wait for users/{uid} capabilities instead of treating
+   * null capabilities as unauthorized.
+   */
+  beginAuthTransition: () => void
 }
 
 const DEFAULT_CAPABILITIES: Capabilities = {
@@ -62,7 +68,13 @@ export function useAuth(): AuthState & AuthActions {
         return
       }
 
+      // Keep layouts in a loading state until users/{uid} capabilities resolve.
+      // Without this, a post-signOut → signIn transition leaves loading=false
+      // with capabilities=null and Tech layout treats that as unauthorized.
+      setLoading(true)
       setUser(firebaseUser)
+      setUserDoc(null)
+      setCaps(null)
 
       try {
         const fs = getClientFirestore()
@@ -90,9 +102,18 @@ export function useAuth(): AuthState & AuthActions {
     return () => unsubscribe()
   }, [])
 
+  const beginAuthTransition = useCallback(() => {
+    setError(null)
+    setLoading(true)
+    setCaps(null)
+    setUserDoc(null)
+  }, [])
+
   const signIn = useCallback(async (email: string, password: string) => {
     setError(null)
     setLoading(true)
+    setCaps(null)
+    setUserDoc(null)
     try {
       const auth = getClientAuth()
       await signInWithEmailAndPassword(auth, email, password)
@@ -121,7 +142,17 @@ export function useAuth(): AuthState & AuthActions {
     }
   }, [])
 
-  return { user, userDoc, capabilities, loading, error, signIn, signOut, resetPassword }
+  return {
+    user,
+    userDoc,
+    capabilities,
+    loading,
+    error,
+    signIn,
+    signOut,
+    resetPassword,
+    beginAuthTransition,
+  }
 }
 
 function mapAuthError(code: string): string {

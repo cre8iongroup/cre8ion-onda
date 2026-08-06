@@ -5,17 +5,18 @@
  * Does NOT modify sessions. Skips rooms that already have a subcollection doc.
  * Leaves ShowDoc.rooms[] in place (Operator unlock dual-write compatibility).
  *
+ * Loads `.env.local` automatically.
+ *
  * Usage:
- *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json \
- *   NEXT_PUBLIC_FIREBASE_PROJECT_ID=cre8ion-onda \
- *   NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://cre8ion-onda-default-rtdb.firebaseio.com \
- *   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=cre8ion-onda.firebasestorage.app \
  *   npx tsx scripts/migrate-rooms-to-subcollection.ts
  *
  * Optional:
  *   DRY_RUN=1          — log only, no writes
  *   SHOW_ID=<id>       — migrate a single show
  */
+
+import { config as loadEnv } from 'dotenv'
+loadEnv({ path: '.env.local' })
 
 import { FieldValue } from 'firebase-admin/firestore'
 import { getAdminFirestore } from '../lib/firebase/admin'

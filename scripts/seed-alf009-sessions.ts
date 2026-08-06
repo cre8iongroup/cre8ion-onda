@@ -7,18 +7,21 @@
  *
  * Also seeds one full-day AV test session per matched room (2026-08-07).
  *
+ * Loads `.env.local` automatically (see dotenv import below).
+ *
  * Usage (dry-run — default):
- *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json \
- *   NEXT_PUBLIC_FIREBASE_PROJECT_ID=cre8ion-onda \
- *   NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://cre8ion-onda-default-rtdb.firebaseio.com \
- *   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=cre8ion-onda.firebasestorage.app \
  *   npx tsx scripts/seed-alf009-sessions.ts
  *
  * Apply writes (after reviewing dry-run room match report):
- *   …same env… CONFIRM=1 npx tsx scripts/seed-alf009-sessions.ts
+ *   CONFIRM=1 npx tsx scripts/seed-alf009-sessions.ts
  *
  * Target project must be cre8ion-onda (not cre8ion-onda-503301).
  */
+
+// Load .env.local before firebase-admin reads NEXT_PUBLIC_* / credentials.
+// (Stock `dotenv/config` only loads `.env` — we need `.env.local` explicitly.)
+import { config as loadEnv } from 'dotenv'
+loadEnv({ path: '.env.local' })
 
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { getAdminFirestore, REQUIRED_FIREBASE_PROJECT_ID } from '../lib/firebase/admin'

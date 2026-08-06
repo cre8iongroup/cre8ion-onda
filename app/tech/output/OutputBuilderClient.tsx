@@ -81,8 +81,10 @@ export default function OutputBuilderClient() {
   // belongs in a deliberate Operator rebuild cycle — not this pass. Until then,
   // paste Builder URLs into show operatorInstructions markdown per room.
 
-  const [showId, setShowId] = useState<string | null>(null)
-  const [roomId, setRoomId] = useState<string | null>(null)
+  // Hydrate from the URL on first paint so we do not flash-spinner / race the
+  // resolve-room effect while showId/roomId state are still null.
+  const [showId, setShowId] = useState<string | null>(() => deepShowId)
+  const [roomId, setRoomId] = useState<string | null>(() => deepRoomId)
   const [show, setShow] = useState<WithId<ShowDoc> | null>(null)
   const [rooms, setRooms] = useState<WithId<RoomDoc>[]>([])
   const [windows, setWindows] = useState<OutputWindowConfig[] | null>(null)
@@ -98,9 +100,12 @@ export default function OutputBuilderClient() {
   const liveTimer = useRef<number | null>(null)
   const persistTimer = useRef<number | null>(null)
   const seededRef = useRef(false)
+  // Keep room-listener callback current without re-subscribing when show loads.
+  const primaryLanguageRef = useRef('en')
 
   const brandTextColor = show?.branding?.textColor || '#f0f0fa'
   const primaryLanguage = show?.defaultLanguages?.[0] || 'en'
+  primaryLanguageRef.current = primaryLanguage
   const canManagePresets = Boolean(capabilities?.canManageOutputLayouts)
 
   const selectedRoomName = useMemo(() => {
@@ -126,9 +131,13 @@ export default function OutputBuilderClient() {
     if (deepRoomId) setRoomId(deepRoomId)
   }, [deepRoomId])
 
-  // When roomId is present but showId is not, resolve via authenticated API
+  // When roomId is present but showId is not, resolve via authenticated API.
+  // Skip when ?showId= is already in the URL — otherwise first paint has
+  // showId state still null, this effect sets resolvingRoom=true, then the
+  // showId-hydration effect cancels us and finally{} never clears the flag
+  // → permanent spinner (Listen/channel still runs under the spinner).
   useEffect(() => {
-    if (!deepRoomId || showId || !user) return
+    if (!deepRoomId || showId || deepShowId || !user) return
     let cancelled = false
     setResolvingRoom(true)
     void (async () => {
@@ -163,8 +172,9 @@ export default function OutputBuilderClient() {
     })()
     return () => {
       cancelled = true
+      setResolvingRoom(false)
     }
-  }, [deepRoomId, showId, user, router])
+  }, [deepRoomId, deepShowId, showId, user, router])
 
   // No room in URL → room check-in (unless still resolving a deep-linked room)
   useEffect(() => {
@@ -237,7 +247,8 @@ export default function OutputBuilderClient() {
     )
   }, [showId])
 
-  // Load selected room config
+  // Load selected room config — subscribe once per showId/roomId.
+  // primaryLanguage is read via ref so show hydration does not tear down Listen.
   useEffect(() => {
     if (!showId || !roomId) {
       setWindows(null)
@@ -256,13 +267,14 @@ export default function OutputBuilderClient() {
           return
         }
         const data = snap.data() as RoomDoc
+        const lang = primaryLanguageRef.current
         if (data.outputConfig && Array.isArray(data.outputConfig.windows) && data.outputConfig.windows.length > 0) {
-          setWindows(ensureWindowCount(data.outputConfig.windows, primaryLanguage))
+          setWindows(ensureWindowCount(data.outputConfig.windows, lang))
           setNeedsSeed(false)
           // Hydrate RTDB once when opening an existing config
           if (!seededRef.current) {
             seededRef.current = true
-            void writeOutputLive(roomId, ensureWindowCount(data.outputConfig.windows, primaryLanguage)).catch(
+            void writeOutputLive(roomId, ensureWindowCount(data.outputConfig.windows, lang)).catch(
               (err) => console.warn('outputLive hydrate failed', err),
             )
           }
@@ -273,7 +285,7 @@ export default function OutputBuilderClient() {
       },
       (err) => setError(err.message || 'Failed to load room.'),
     )
-  }, [showId, roomId, primaryLanguage])
+  }, [showId, roomId])
 
 
   // Presets for first-run apply

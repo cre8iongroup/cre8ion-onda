@@ -105,14 +105,14 @@ export function AttendeeFooter({
       ) : null}
       <footer className="attendee-powered-by">
         <p>
-          {eventTitle} · Powered by cre8ion ·{' '}
-          <WhyOndaLink id="btn-attendee-why-onda" className="attendee-powered-by-action">
-            why
-          </WhyOndaLink>
-          {' · '}
+          {eventTitle} · Powered by{' '}
           <Link href="/what-is-onda" className="attendee-powered-by-action">
-            learn more
+            cre8ion Onda
           </Link>
+          {' · '}
+          <WhyOndaLink id="btn-attendee-why-onda" className="attendee-powered-by-action">
+            Why onda?
+          </WhyOndaLink>
         </p>
       </footer>
     </>

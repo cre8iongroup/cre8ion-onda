@@ -15,6 +15,7 @@ import { NextResponse, type NextRequest } from 'next/server'
  *
  * Attendee and output views are fully public — no auth check.
  * Canonical show home: /show/[slug]. Legacy /portal/[slug] redirects there.
+ * Output Windows: /output/[roomId]/[windowIndex] (controls-free OBS targets).
  */
 
 // Routes that require authentication

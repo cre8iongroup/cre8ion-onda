@@ -146,6 +146,12 @@ h4 { font-size: var(--text-lg);  }
 
 p { color: var(--color-text-secondary); }
 
+/* Output Windows: captions are <p> tags — do not force panel secondary text color */
+.output-window-root p {
+  color: inherit;
+  font-family: inherit;
+}
+
 a {
   color: var(--color-primary-light);
   text-decoration: none;
@@ -1098,11 +1104,17 @@ a.admin-public-link code {
 
 .output-builder-font-value {
   flex: 0 0 auto;
-  min-width: 3.25rem;
-  text-align: right;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
+}
+
+.output-builder-font-input {
+  flex: 0 0 auto;
+  width: 4.5rem;
+  max-width: 4.5rem;
+  padding: var(--space-2) var(--space-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 

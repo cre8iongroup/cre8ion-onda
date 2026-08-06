@@ -26,6 +26,7 @@ import {
   techCheckInHref,
   writeTechCheckIn,
 } from '@/lib/tech/checkIn'
+import ColorField from '@/components/ColorField'
 import type {
   OutputLayoutDoc,
   OutputWindowConfig,
@@ -559,9 +560,14 @@ export default function OutputBuilderClient() {
                     />
                   </div>
 
-                  <div className="field">
-                    <label className="label" htmlFor={`ow-bg-${index}`}>Background</label>
-                    <div className="flex gap-2" style={{ flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
+                  <div style={{ marginBottom: 'var(--space-4)' }}>
+                    <ColorField
+                      id={`ow-bg-${index}`}
+                      label="Background"
+                      value={w.backgroundColor}
+                      onChange={(hex) => updateWindow(index, { backgroundColor: hex })}
+                    />
+                    <div className="flex gap-2" style={{ flexWrap: 'wrap', marginTop: 'var(--space-2)' }}>
                       {BG_SWATCHES.map((s) => (
                         <button
                           key={s.value}
@@ -585,16 +591,9 @@ export default function OutputBuilderClient() {
                         </button>
                       ))}
                     </div>
-                    <input
-                      id={`ow-bg-${index}`}
-                      className="input"
-                      value={w.backgroundColor}
-                      onChange={(e) => updateWindow(index, { backgroundColor: e.target.value })}
-                    />
                   </div>
 
-                  <div className="field">
-                    <label className="label" htmlFor={`ow-text-${index}`}>Text color</label>
+                  <div>
                     <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
                       {inherited ? 'Inherited from brand' : 'Custom override'}
                       {inherited ? (
@@ -621,18 +620,11 @@ export default function OutputBuilderClient() {
                         </>
                       )}
                     </p>
-                    <input
+                    <ColorField
                       id={`ow-text-${index}`}
-                      type="color"
-                      className="input"
-                      value={/^#[0-9A-Fa-f]{6}$/.test(textDisplay) ? textDisplay : '#f0f0fa'}
-                      onChange={(e) => updateWindow(index, { textColor: e.target.value })}
-                    />
-                    <input
-                      className="input"
-                      style={{ marginTop: 'var(--space-2)' }}
+                      label="Text color"
                       value={textDisplay}
-                      onChange={(e) => updateWindow(index, { textColor: e.target.value })}
+                      onChange={(hex) => updateWindow(index, { textColor: hex })}
                     />
                   </div>
                 </section>

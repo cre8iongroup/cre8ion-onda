@@ -36,54 +36,68 @@ export default async function ShowHomePage({
   if (!show) notFound()
 
   const sessions = await loadPublicSessionsForShow(show.id)
-  const hasLive = sessions.some((s) => s.feedState === 'live')
+  const liveRoomIds = new Set(
+    sessions
+      .filter((s) => s.feedState === 'live' && s.roomId)
+      .map((s) => s.roomId),
+  )
 
   return (
     <AttendeeShell branding={show.branding}>
       {show.branding.logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className="attendee-logo" src={show.branding.logoUrl} alt="" />
+        <img className="attendee-logo attendee-logo--hero" src={show.branding.logoUrl} alt="" />
       ) : null}
       <h1 className="attendee-title">{show.name}</h1>
-      <p className="attendee-lede">{show.clientName}</p>
 
-      {show.links.length > 0 ? (
+      <section className="attendee-quick-links" aria-labelledby="attendee-quick-links-heading">
+        <div className="attendee-section-rule" aria-hidden />
+        <h2 id="attendee-quick-links-heading" className="attendee-section-label">
+          Quick Links
+        </h2>
         <ul className="attendee-link-list">
+          <li>
+            <Link href={`/show/${show.slug}/sessions`} className="attendee-quick-link">
+              Attendee Hub
+            </Link>
+          </li>
           {show.links.map((link) => (
             <li key={`${link.order}-${link.url}`}>
-              <a href={link.url} target="_blank" rel="noopener noreferrer">
+              <a href={link.url} target="_blank" rel="noopener noreferrer" className="attendee-quick-link">
                 {link.title}
               </a>
             </li>
           ))}
         </ul>
-      ) : null}
+      </section>
 
-      <section style={{ marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '0.85rem', letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.65, marginBottom: '0.75rem' }}>
+      <section className="attendee-rooms-section" aria-labelledby="attendee-rooms-heading">
+        <h2 id="attendee-rooms-heading" className="attendee-section-label">
           Rooms
         </h2>
         {show.rooms.length === 0 ? (
           <p className="attendee-lede">Rooms will appear here when published.</p>
         ) : (
-          <ul className="attendee-entry-list">
-            {show.rooms.map((room) => (
-              <li key={room.id}>
-                <Link href={`/room/${room.id}`}>
-                  <span>{room.name}</span>
-                  <span aria-hidden>→</span>
-                </Link>
-              </li>
-            ))}
+          <ul className="attendee-room-grid">
+            {show.rooms.map((room) => {
+              const isLive = liveRoomIds.has(room.id)
+              return (
+                <li key={room.id}>
+                  <Link
+                    href={`/room/${room.id}`}
+                    className={`attendee-room-card${isLive ? ' is-live' : ''}`}
+                  >
+                    {isLive ? (
+                      <span className="attendee-room-live-badge">Live</span>
+                    ) : null}
+                    <span className="attendee-room-card-name">{room.name}</span>
+                  </Link>
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>
-
-      <p style={{ marginBottom: '1rem' }}>
-        <Link href={`/show/${show.slug}/sessions`}>
-          Browse all sessions{hasLive ? ' · Live now' : ''}
-        </Link>
-      </p>
 
       <AttendeeFooter eventTitle={show.name} legalNotice={show.legalNotice} />
     </AttendeeShell>

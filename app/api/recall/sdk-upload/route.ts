@@ -64,9 +64,11 @@ export async function POST(request: NextRequest) {
   const dg = buildDeepgramStreamingConfig({
     language: body.languageCode ?? 'en',
   })
-  console.info('[recall/sdk-upload] deepgram_streaming preset', {
+  console.info('[recall/sdk-upload] outbound deepgram_streaming', {
     presetId: dg.presetId,
     label: dg.label,
+    deepgram_streaming: dg.deepgram_streaming,
+    keytermJson: JSON.stringify(dg.deepgram_streaming.keyterm ?? null),
   })
 
   const payload = {

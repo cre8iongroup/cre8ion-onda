@@ -83,6 +83,11 @@ function buildDeepgramStreamingConfig({ language, presetId, keyterms } = {}) {
     ...preset.options,
   }
   if (normalizedKeyterms.length > 0) {
+    // Recall deepgram_async types keyterm as string[]; deepgram_streaming leaves it
+    // untyped. Deepgram's native streaming API wants repeated ?keyterm= query params
+    // (SDKs explode arrays). We send a JSON array — same shape that works for async.
+    // If live streaming shows no boost while async does, the gap is likely Recall's
+    // forwarding into the Deepgram WebSocket URL, not this merge path.
     deepgram_streaming.keyterm = normalizedKeyterms
   }
   return {

@@ -43,14 +43,6 @@ async function createSdkUpload({
     presetId: mappedPreset ?? undefined,
     keyterms: deepgramKeyterms,
   })
-  console.info('[recallApi] deepgram_streaming preset', {
-    transcriptionStyle: transcriptionStyle || null,
-    presetId: dg.presetId,
-    label: dg.label,
-    keytermCount: Array.isArray(dg.deepgram_streaming.keyterm)
-      ? dg.deepgram_streaming.keyterm.length
-      : 0,
-  })
 
   const body = {
     metadata: { sessionId, source: 'onda-electron-spike' },
@@ -66,6 +58,25 @@ async function createSdkUpload({
       realtime_endpoints: realtimeEndpoints,
     },
   }
+
+  // Log the real outbound provider object (values + shape), not just a count.
+  // Deepgram's native streaming API wants repeated ?keyterm= query params;
+  // Recall accepts a JSON body and must explode arrays when opening the WS.
+  const keytermValue = dg.deepgram_streaming.keyterm
+  console.info('[recallApi] sdk_upload outbound deepgram_streaming', {
+    transcriptionStyle: transcriptionStyle || null,
+    presetId: dg.presetId,
+    label: dg.label,
+    deepgram_streaming: dg.deepgram_streaming,
+    keyterm: {
+      present: Object.prototype.hasOwnProperty.call(dg.deepgram_streaming, 'keyterm'),
+      typeof: keytermValue === null ? 'null' : typeof keytermValue,
+      isArray: Array.isArray(keytermValue),
+      values: Array.isArray(keytermValue) ? keytermValue : keytermValue,
+      json: JSON.stringify(keytermValue),
+    },
+    providerJson: JSON.stringify(body.recording_config.transcript.provider),
+  })
 
   const res = await fetch(`${recallBaseUrl(region)}/api/v1/sdk_upload/`, {
     method: 'POST',
@@ -89,6 +100,10 @@ async function createSdkUpload({
     uploadToken: json.upload_token,
     recordingId: json.recording_id,
     deepgramPreset: dg.presetId,
+    // Echoed for Operator diagnostics — exact object POSTed under transcript.provider.
+    deepgramStreaming: dg.deepgram_streaming,
+    deepgramKeyterm: Array.isArray(keytermValue) ? keytermValue : keytermValue ?? null,
+    sdkUploadResponseKeys: Object.keys(json || {}),
   }
 }
 

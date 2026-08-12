@@ -37,6 +37,9 @@ yarn-error.log*
 !.env.build.example
 !**/.env.build.example
 
+# One-off transcript / data exports (never commit)
+/exports/
+
 # vercel
 .vercel
 

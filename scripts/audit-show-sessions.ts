@@ -41,12 +41,6 @@ const DEFAULT_SHOW_ID = 'cXWxHzN9MwgdsASqGvDO'
 const DEFAULT_SHOW_SLUG = 'alpfa26'
 const DEFAULT_SHOW_NAME = 'ALPFA Convention 2026'
 
-/** Public OAuth client embedded in firebase-tools (used only to mint ADC from CLI login). */
-const FIREBASE_TOOLS_OAUTH = {
-  client_id: '563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com',
-  client_secret: 'jEQPZQZptRWOsDadboIJe1vIv84',
-}
-
 const LIFECYCLE_ACTIONS = [
   'SESSION_SOUND_CHECK_STARTED',
   'SESSION_FEED_GO_LIVE',
@@ -105,6 +99,25 @@ type SessionRow = {
   dataSource: string
 }
 
+/** Resolve firebase-tools OAuth client (must match the installed CLI). */
+function firebaseToolsOAuthClient(): { client_id: string; client_secret: string } {
+  try {
+    // Prefer the installed CLI package so client_secret stays in sync.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const api = require(join(
+      homedir(),
+      '.local/lib/node_modules/firebase-tools/lib/api.js',
+    )) as { clientId: () => string; clientSecret: () => string }
+    return { client_id: api.clientId(), client_secret: api.clientSecret() }
+  } catch {
+    // Fallback matching firebase-tools@13.35.1 defaults
+    return {
+      client_id: '563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com',
+      client_secret: 'j9iVZfS8kkCEFUPaAeJV0sAi',
+    }
+  }
+}
+
 /**
  * Bridge Firebase CLI user login → ephemeral authorized_user ADC for Admin SDK.
  * Writes ONLY under /tmp (outside the repo). Returns true if ADC is usable.
@@ -145,10 +158,11 @@ function bridgeFirebaseCliToAdc(): { ok: boolean; detail: string } {
     return { ok: false, detail: 'firebase-tools.json has no refresh_token — login incomplete' }
   }
 
+  const oauth = firebaseToolsOAuthClient()
   const adc = {
     type: 'authorized_user',
-    client_id: FIREBASE_TOOLS_OAUTH.client_id,
-    client_secret: FIREBASE_TOOLS_OAUTH.client_secret,
+    client_id: oauth.client_id,
+    client_secret: oauth.client_secret,
     refresh_token: refreshToken,
   }
   writeFileSync(EPHEMERAL_ADC_PATH, JSON.stringify(adc), { mode: 0o600 })

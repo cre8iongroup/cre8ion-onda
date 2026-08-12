@@ -83,3 +83,10 @@ public/fallback-*.js
 # Icon generation intermediates (committed artifact is build/icon.ico only)
 /electron-spike/build/_icon-png/
 /electron-spike/build/_icon-preview/
+
+# Local Firebase / Google auth artifacts (never commit)
+*-firebase-adminsdk*.json
+.runtimeconfig.json
+**/application_default_credentials.json
+.firebase-tools.json
+firebase-tools.json

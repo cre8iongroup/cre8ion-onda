@@ -3,18 +3,19 @@
  *
  * For every session on the show:
  *   - Firestore SessionDoc (feedState, draft, schedule, room, title, recordingId)
- *   - RTDB liveSessions/{id} presence + chunk stats
- *   - Firestore transcripts/ migration presence
+ *   - RTDB liveSessions/{id} presence + chunk stats + word count
+ *   - Firestore transcripts/ migration presence + word count
  *   - auditLog lifecycle events for the session
- * Flags stuck / migration-gap / captured-nothing / never-started.
+ *   - captured duration vs scheduled window
+ * Flags stuck / migration-gap / captured-nothing / never-started / upcoming.
  *
  * Does NOT write feedState, RTDB, Firestore, or call Recall.
  *
- * Loads `.env.local` automatically (same pattern as seed-alf009-sessions.ts).
- * Prefer Admin credentials (GOOGLE_APPLICATION_CREDENTIALS or
- * FIREBASE_SERVICE_ACCOUNT_JSON). Without Admin, falls back to public
- * show/session APIs + world-readable RTDB chunk/feedState paths — auditLog,
- * transcripts/, recordingId, and draft sessions will be UNAVAILABLE.
+ * Auth (in order):
+ *   1. GOOGLE_APPLICATION_CREDENTIALS / FIREBASE_SERVICE_ACCOUNT_JSON
+ *   2. Ephemeral ADC bridged from Firebase CLI login
+ *      (~/.config/configstore/firebase-tools.json → /tmp/onda-firebase-adc.json)
+ *   3. Else public API + world-readable RTDB fallback
  *
  * Usage:
  *   npx tsx scripts/audit-show-sessions.ts
@@ -24,12 +25,14 @@
  *   SHOW_SLUG=alpfa26
  *   SHOW_NAME="ALPFA Convention 2026"
  *   PUBLIC_APP_ORIGIN=https://cre8ion-onda.app
+ *   SHORT_CAPTURE_RATIO=0.5   (flag if captured < this × scheduled duration)
  */
 
 import { config as loadEnv } from 'dotenv'
 loadEnv({ path: '.env.local' })
 
-import { mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { homedir } from 'os'
 import { join } from 'path'
 import { rtdbLiveSessionChunksPath, rtdbLiveSessionPath } from '../lib/rtdbPaths'
 
@@ -37,6 +40,12 @@ import { rtdbLiveSessionChunksPath, rtdbLiveSessionPath } from '../lib/rtdbPaths
 const DEFAULT_SHOW_ID = 'cXWxHzN9MwgdsASqGvDO'
 const DEFAULT_SHOW_SLUG = 'alpfa26'
 const DEFAULT_SHOW_NAME = 'ALPFA Convention 2026'
+
+/** Public OAuth client embedded in firebase-tools (used only to mint ADC from CLI login). */
+const FIREBASE_TOOLS_OAUTH = {
+  client_id: '563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com',
+  client_secret: 'jEQPZQZptRWOsDadboIJe1vIv84',
+}
 
 const LIFECYCLE_ACTIONS = [
   'SESSION_SOUND_CHECK_STARTED',
@@ -56,6 +65,9 @@ const PUBLIC_APP_ORIGIN =
   process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, '') ||
   'https://cre8ion-onda.app'
 
+const SHORT_CAPTURE_RATIO = Number(process.env.SHORT_CAPTURE_RATIO ?? '0.5')
+const EPHEMERAL_ADC_PATH = '/tmp/onda-firebase-adc.json'
+
 type AuditEvent = {
   action: string
   performedAtMs: number | null
@@ -72,6 +84,7 @@ type SessionRow = {
   isDraft: string
   scheduledStartIso: string
   scheduledEndIso: string
+  scheduledDurationMin: string
   recordingId: string
   rtdbExists: string
   rtdbFeedState: string
@@ -80,13 +93,80 @@ type SessionRow = {
   rtdbFinalizedRatio: string
   rtdbFirstTs: string
   rtdbLastTs: string
+  capturedDurationMin: string
+  durationFlag: string
   transcriptChunkCount: number | string
-  transcriptWordCount: number | string
+  wordCount: number | string
+  wordCountSource: string
   auditEventCount: number | string
   auditTimeline: string
   status: string
   notes: string
   dataSource: string
+}
+
+/**
+ * Bridge Firebase CLI user login → ephemeral authorized_user ADC for Admin SDK.
+ * Writes ONLY under /tmp (outside the repo). Returns true if ADC is usable.
+ */
+function bridgeFirebaseCliToAdc(): { ok: boolean; detail: string } {
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim()) {
+    return { ok: true, detail: `existing GOOGLE_APPLICATION_CREDENTIALS` }
+  }
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim()) {
+    return { ok: true, detail: 'FIREBASE_SERVICE_ACCOUNT_JSON set' }
+  }
+
+  const toolsPath = join(homedir(), '.config/configstore/firebase-tools.json')
+  if (!existsSync(toolsPath)) {
+    return { ok: false, detail: 'firebase-tools.json missing — run firebase login --no-localhost' }
+  }
+
+  let refreshToken: string | null = null
+  let email: string | null = null
+  try {
+    const raw = JSON.parse(readFileSync(toolsPath, 'utf8')) as {
+      tokens?: { refresh_token?: string }
+      user?: { email?: string } | string
+    }
+    refreshToken =
+      typeof raw.tokens?.refresh_token === 'string' ? raw.tokens.refresh_token : null
+    email =
+      typeof raw.user === 'string'
+        ? raw.user
+        : typeof raw.user?.email === 'string'
+          ? raw.user.email
+          : null
+  } catch {
+    return { ok: false, detail: 'firebase-tools.json unreadable' }
+  }
+
+  if (!refreshToken) {
+    return { ok: false, detail: 'firebase-tools.json has no refresh_token — login incomplete' }
+  }
+
+  const adc = {
+    type: 'authorized_user',
+    client_id: FIREBASE_TOOLS_OAUTH.client_id,
+    client_secret: FIREBASE_TOOLS_OAUTH.client_secret,
+    refresh_token: refreshToken,
+  }
+  writeFileSync(EPHEMERAL_ADC_PATH, JSON.stringify(adc), { mode: 0o600 })
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = EPHEMERAL_ADC_PATH
+
+  // Ensure project targeting for Admin init guard.
+  if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim()) {
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = 'cre8ion-onda'
+  }
+  if (!process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL?.trim()) {
+    process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL =
+      'https://cre8ion-onda-default-rtdb.firebaseio.com'
+  }
+
+  return {
+    ok: true,
+    detail: `bridged Firebase CLI login → ${EPHEMERAL_ADC_PATH}${email ? ` (${email})` : ''}`,
+  }
 }
 
 function hasAdminCreds(): boolean {
@@ -106,6 +186,11 @@ function formatTs(ms: number | null | undefined): string {
   return new Date(ms).toISOString()
 }
 
+function formatDurationMin(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return ''
+  return (ms / 60000).toFixed(1)
+}
+
 function timestampToMs(value: unknown): number | null {
   if (!value) return null
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -116,6 +201,13 @@ function timestampToMs(value: unknown): number | null {
     if (typeof v.seconds === 'number') return v.seconds * 1000
   }
   return null
+}
+
+function countWords(text: string): number {
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length
 }
 
 async function mapPool<T, R>(
@@ -174,7 +266,16 @@ async function loadShowAndSessionsAdmin(): Promise<{
   show: LoadedShow
   sessions: LoadedSession[]
 }> {
-  const { getAdminFirestore } = await import('../lib/firebase/admin')
+  const { getAdminFirestore, REQUIRED_FIREBASE_PROJECT_ID } = await import(
+    '../lib/firebase/admin'
+  )
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim()
+  if (projectId && projectId !== REQUIRED_FIREBASE_PROJECT_ID) {
+    throw new Error(
+      `Refusing wrong Firebase project ${projectId} (required ${REQUIRED_FIREBASE_PROJECT_ID})`,
+    )
+  }
+
   const fs = getAdminFirestore()
 
   const showIdEnv = process.env.SHOW_ID?.trim()
@@ -189,7 +290,6 @@ async function loadShowAndSessionsAdmin(): Promise<{
     if (!showSnap.exists) throw new Error(`SHOW_ID not found: ${showIdEnv}`)
     showId = showSnap.id
   } else {
-    // Prefer known ALF009 id, then name / portal slug scan.
     const known = await fs.doc(`shows/${DEFAULT_SHOW_ID}`).get()
     if (known.exists) {
       showSnap = known
@@ -289,7 +389,7 @@ async function loadShowAndSessionsPublic(): Promise<{
     title: s.title,
     roomId: s.roomId,
     feedState: s.feedState,
-    isDraft: null, // public API excludes drafts
+    isDraft: null,
     scheduledStartMs: s.scheduledStartMs,
     scheduledEndMs: s.scheduledEndMs,
     recordingId: null,
@@ -313,9 +413,9 @@ async function loadRtdbStats(sessionId: string): Promise<{
   finalizedCount: number | null
   firstTs: number | null
   lastTs: number | null
+  wordCount: number | null
   note: string
 }> {
-  // feedState + chunks are world-readable; parent node is not.
   try {
     const feedState = await publicRtdbGet(`${rtdbLiveSessionPath(sessionId)}/feedState`)
 
@@ -332,27 +432,35 @@ async function loadRtdbStats(sessionId: string): Promise<{
     let finalizedCount: number | null = null
     let firstTs: number | null = null
     let lastTs: number | null = null
+    let wordCount: number | null = null
 
     if (chunkCount > 0) {
       const raw = (await publicRtdbGet(rtdbLiveSessionChunksPath(sessionId))) as Record<
         string,
-        { timestamp?: number; isFinalized?: boolean }
+        { timestamp?: number; isFinalized?: boolean; text?: string }
       > | null
       if (raw && typeof raw === 'object') {
         let fin = 0
+        let words = 0
         for (const v of Object.values(raw)) {
           if (!v || typeof v !== 'object') continue
-          if (v.isFinalized) fin += 1
           const ts = typeof v.timestamp === 'number' ? v.timestamp : null
           if (ts != null) {
             if (firstTs == null || ts < firstTs) firstTs = ts
             if (lastTs == null || ts > lastTs) lastTs = ts
           }
+          // Prefer finalized text to avoid partial-utterance inflation.
+          if (v.isFinalized) {
+            fin += 1
+            if (typeof v.text === 'string') words += countWords(v.text)
+          }
         }
         finalizedCount = fin
+        wordCount = words
       }
     } else {
       finalizedCount = 0
+      wordCount = 0
     }
 
     return {
@@ -362,6 +470,7 @@ async function loadRtdbStats(sessionId: string): Promise<{
       finalizedCount,
       firstTs,
       lastTs,
+      wordCount,
       note: 'public RTDB',
     }
   } catch (err) {
@@ -372,6 +481,7 @@ async function loadRtdbStats(sessionId: string): Promise<{
       finalizedCount: null,
       firstTs: null,
       lastTs: null,
+      wordCount: null,
       note: `RTDB read failed: ${err instanceof Error ? err.message : String(err)}`,
     }
   }
@@ -380,20 +490,30 @@ async function loadRtdbStats(sessionId: string): Promise<{
 async function loadTranscriptsAdmin(
   showId: string,
   sessionId: string,
-): Promise<{ chunkCount: number; wordCount: number } | null> {
+): Promise<{
+  chunkCount: number
+  wordCount: number
+  firstTs: number | null
+  lastTs: number | null
+}> {
   const { getAdminFirestore } = await import('../lib/firebase/admin')
   const snap = await getAdminFirestore()
     .collection(`shows/${showId}/sessions/${sessionId}/transcripts`)
-    .select('text')
+    .select('text', 'timestamp')
     .get()
   let wordCount = 0
+  let firstTs: number | null = null
+  let lastTs: number | null = null
   for (const doc of snap.docs) {
-    const text = (doc.data() as { text?: string }).text
-    if (typeof text === 'string' && text.trim()) {
-      wordCount += text.trim().split(/\s+/).filter(Boolean).length
+    const data = doc.data() as { text?: string; timestamp?: unknown }
+    if (typeof data.text === 'string') wordCount += countWords(data.text)
+    const ts = timestampToMs(data.timestamp)
+    if (ts != null) {
+      if (firstTs == null || ts < firstTs) firstTs = ts
+      if (lastTs == null || ts > lastTs) lastTs = ts
     }
   }
-  return { chunkCount: snap.size, wordCount }
+  return { chunkCount: snap.size, wordCount, firstTs, lastTs }
 }
 
 async function loadAuditAdmin(sessionId: string): Promise<AuditEvent[]> {
@@ -424,16 +544,31 @@ async function loadAuditAdmin(sessionId: string): Promise<AuditEvent[]> {
 
 function classify(opts: {
   feedState: string
+  scheduledStartMs: number | null
   scheduledEndMs: number | null
   nowMs: number
   rtdbChunkCount: number | null
   transcriptChunkCount: number | null
+  capturedDurationMs: number | null
+  scheduledDurationMs: number | null
   audit: AuditEvent[] | null
   adminMode: boolean
-}): { status: string; notes: string } {
-  const { feedState, scheduledEndMs, nowMs, rtdbChunkCount, transcriptChunkCount, audit, adminMode } =
-    opts
-  const notes: string[] = []
+}): { status: string; notes: string; durationFlag: string } {
+  const {
+    feedState,
+    scheduledStartMs,
+    scheduledEndMs,
+    nowMs,
+    rtdbChunkCount,
+    transcriptChunkCount,
+    capturedDurationMs,
+    scheduledDurationMs,
+    audit,
+    adminMode,
+  } = opts
+
+  const rtdbChunks = rtdbChunkCount ?? 0
+  const migrated = transcriptChunkCount ?? 0
   const wentLive =
     audit != null &&
     audit.some(
@@ -442,8 +577,30 @@ function classify(opts: {
         e.action === 'SESSION_FEED_GO_LIVE' ||
         e.action === 'SESSION_FEED_STOPPED',
     )
-  const rtdbChunks = rtdbChunkCount ?? 0
-  const migrated = transcriptChunkCount ?? 0
+
+  let durationFlag = ''
+  if (
+    capturedDurationMs != null &&
+    scheduledDurationMs != null &&
+    scheduledDurationMs > 0 &&
+    Number.isFinite(SHORT_CAPTURE_RATIO) &&
+    SHORT_CAPTURE_RATIO > 0 &&
+    capturedDurationMs < scheduledDurationMs * SHORT_CAPTURE_RATIO
+  ) {
+    durationFlag = `SHORT_CAPTURE (<${Math.round(SHORT_CAPTURE_RATIO * 100)}% of scheduled)`
+  }
+
+  // Upcoming takes priority over NEVER STARTED / standby-OK for future sessions.
+  if (scheduledStartMs != null && scheduledStartMs > nowMs) {
+    if (feedState === 'standby' || feedState === 'ended') {
+      return {
+        status: 'UPCOMING - not yet started',
+        notes: `scheduledStart in future (${formatTs(scheduledStartMs)})`,
+        durationFlag,
+      }
+    }
+    // Future-dated but already non-terminal — still flag stuck.
+  }
 
   if (feedState !== 'standby' && feedState !== 'ended') {
     return {
@@ -452,6 +609,7 @@ function classify(opts: {
         `Non-terminal feedState=${feedState}`,
         rtdbChunks > 0 ? `RTDB chunks=${rtdbChunks}` : 'RTDB chunks=0',
       ].join('; '),
+      durationFlag,
     }
   }
 
@@ -461,17 +619,19 @@ function classify(opts: {
         return {
           status: 'MIGRATION GAP',
           notes: 'feedState=ended but transcripts/ subcollection empty or missing',
+          durationFlag,
         }
       }
       return {
         status: 'OK - ended & migrated',
         notes: `transcripts=${migrated}`,
+        durationFlag,
       }
     }
-    notes.push('transcripts/ unverified (no Admin)')
     return {
       status: 'ENDED - migration unverified',
-      notes: notes.join('; '),
+      notes: 'transcripts/ unverified (no Admin)',
+      durationFlag,
     }
   }
 
@@ -479,7 +639,8 @@ function classify(opts: {
   if (adminMode && wentLive && rtdbChunks === 0 && migrated === 0) {
     return {
       status: 'CAPTURED NOTHING',
-      notes: `Lifecycle audit present but zero RTDB chunks and zero migrated transcripts`,
+      notes: 'Lifecycle audit present but zero RTDB chunks and zero migrated transcripts',
+      durationFlag,
     }
   }
 
@@ -487,6 +648,7 @@ function classify(opts: {
     return {
       status: 'RTDB ORPHAN - standby with live node',
       notes: `feedState=standby but RTDB still has ${rtdbChunks} chunk(s) — reset/end cleanup may have missed RTDB`,
+      durationFlag,
     }
   }
 
@@ -498,46 +660,51 @@ function classify(opts: {
         return {
           status: 'NEVER STARTED',
           notes: 'scheduledEnd passed; standby; no lifecycle audit; no RTDB/transcripts',
+          durationFlag,
         }
       }
       if (wentLive && rtdbChunks === 0 && migrated === 0) {
         return {
           status: 'CAPTURED NOTHING',
           notes: 'went live per audit but no capture artifacts remain',
+          durationFlag,
         }
       }
+      const resetOnly =
+        audit &&
+        audit.length > 0 &&
+        audit.every((e) => e.action === 'SESSION_FEED_RESET')
       return {
         status: 'OK - standby',
         notes: [
           audit && audit.length ? `audit=${audit.length}` : 'no lifecycle audit',
+          resetOnly ? 'audit is reset-only' : null,
           migrated ? `transcripts=${migrated}` : null,
         ]
           .filter(Boolean)
           .join('; '),
+        durationFlag,
       }
     }
-    // public fallback — cannot confirm audit trail
     if (rtdbChunks === 0) {
       return {
         status: 'NEVER STARTED (unverified)',
         notes:
           'past schedule + standby + no RTDB; auditLog not readable without Admin — may also be reset',
+        durationFlag,
       }
     }
   }
 
-  if (feedState === 'standby') {
-    return {
-      status: 'OK - standby',
-      notes: adminMode
-        ? audit && audit.length
-          ? `audit=${audit.length}`
-          : 'no lifecycle audit'
-        : 'public data only',
-    }
+  return {
+    status: 'OK - standby',
+    notes: adminMode
+      ? audit && audit.length
+        ? `audit=${audit.length}`
+        : 'no lifecycle audit'
+      : 'public data only',
+    durationFlag,
   }
-
-  return { status: `UNKNOWN - ${feedState}`, notes: notes.join('; ') || '' }
 }
 
 function writeCsv(rows: SessionRow[], path: string) {
@@ -551,6 +718,7 @@ function writeCsv(rows: SessionRow[], path: string) {
     'isDraft',
     'scheduledStartIso',
     'scheduledEndIso',
+    'scheduledDurationMin',
     'recordingId',
     'rtdbExists',
     'rtdbFeedState',
@@ -559,8 +727,11 @@ function writeCsv(rows: SessionRow[], path: string) {
     'rtdbFinalizedRatio',
     'rtdbFirstTs',
     'rtdbLastTs',
+    'capturedDurationMin',
+    'durationFlag',
     'transcriptChunkCount',
-    'transcriptWordCount',
+    'wordCount',
+    'wordCountSource',
     'auditEventCount',
     'auditTimeline',
     'status',
@@ -580,7 +751,8 @@ function printTable(rows: SessionRow[]) {
     'feedState',
     'roomName',
     'title',
-    'rtdbChunkCount',
+    'wordCount',
+    'capturedDurationMin',
     'transcriptChunkCount',
     'auditEventCount',
     'sessionId',
@@ -588,7 +760,7 @@ function printTable(rows: SessionRow[]) {
   const widths = Object.fromEntries(
     cols.map((c) => [
       c,
-      Math.min(44, Math.max(String(c).length, ...rows.map((r) => String(r[c] ?? '').length))),
+      Math.min(40, Math.max(String(c).length, ...rows.map((r) => String(r[c] ?? '').length))),
     ]),
   ) as Record<(typeof cols)[number], number>
 
@@ -621,20 +793,39 @@ async function auditOne(
   const rtdb = await loadRtdbStats(session.sessionId)
 
   let transcriptChunkCount: number | string = 'UNAVAILABLE'
-  let transcriptWordCount: number | string = 'UNAVAILABLE'
+  let wordCount: number | string = rtdb.wordCount ?? 'UNAVAILABLE'
+  let wordCountSource =
+    rtdb.wordCount != null && rtdb.chunkCount && rtdb.chunkCount > 0
+      ? 'RTDB finalized'
+      : rtdb.chunkCount === 0
+        ? 'none'
+        : 'UNAVAILABLE'
   let audit: AuditEvent[] | null = null
   let auditEventCount: number | string = 'UNAVAILABLE'
   let auditTimeline = 'UNAVAILABLE'
-  let recordingId = session.recordingId ?? ''
+  const recordingId = session.recordingId ?? ''
+  let transcriptFirstTs: number | null = null
+  let transcriptLastTs: number | null = null
 
   if (adminMode) {
     try {
       const t = await loadTranscriptsAdmin(session.showId, session.sessionId)
-      transcriptChunkCount = t?.chunkCount ?? 0
-      transcriptWordCount = t?.wordCount ?? 0
+      transcriptChunkCount = t.chunkCount
+      transcriptFirstTs = t.firstTs
+      transcriptLastTs = t.lastTs
+      // Prefer migrated transcript words when present; else keep RTDB words.
+      if (t.chunkCount > 0) {
+        wordCount = t.wordCount
+        wordCountSource = 'Firestore transcripts/'
+      } else if (rtdb.wordCount != null && (rtdb.chunkCount ?? 0) > 0) {
+        wordCount = rtdb.wordCount
+        wordCountSource = 'RTDB finalized'
+      } else {
+        wordCount = 0
+        wordCountSource = 'none'
+      }
     } catch (err) {
       transcriptChunkCount = 'ERROR'
-      transcriptWordCount = 'ERROR'
       console.warn(
         `[audit] transcripts failed ${session.sessionId}:`,
         err instanceof Error ? err.message : err,
@@ -644,7 +835,12 @@ async function auditOne(
       audit = await loadAuditAdmin(session.sessionId)
       auditEventCount = audit.length
       auditTimeline = audit
-        .map((e) => `${e.action}@${formatTs(e.performedAtMs) || '?'}`)
+        .map(
+          (e) =>
+            `${e.action}@${formatTs(e.performedAtMs) || '?'}${
+              e.performedBy ? `(${e.performedBy})` : ''
+            }`,
+        )
         .join(' > ')
     } catch (err) {
       auditEventCount = 'ERROR'
@@ -656,12 +852,38 @@ async function auditOne(
     }
   }
 
-  const { status, notes } = classify({
+  const scheduledDurationMs =
+    session.scheduledStartMs != null &&
+    session.scheduledEndMs != null &&
+    session.scheduledEndMs >= session.scheduledStartMs
+      ? session.scheduledEndMs - session.scheduledStartMs
+      : null
+
+  // Captured duration: RTDB window if live node present; else migrated transcript timestamps.
+  let capturedDurationMs: number | null = null
+  if (
+    rtdb.firstTs != null &&
+    rtdb.lastTs != null &&
+    rtdb.lastTs >= rtdb.firstTs &&
+    (rtdb.chunkCount ?? 0) > 0
+  ) {
+    capturedDurationMs = rtdb.lastTs - rtdb.firstTs
+  } else if (
+    transcriptFirstTs != null &&
+    transcriptLastTs != null &&
+    transcriptLastTs >= transcriptFirstTs
+  ) {
+    capturedDurationMs = transcriptLastTs - transcriptFirstTs
+  }
+  const { status, notes, durationFlag } = classify({
     feedState: session.feedState,
+    scheduledStartMs: session.scheduledStartMs,
     scheduledEndMs: session.scheduledEndMs,
     nowMs,
     rtdbChunkCount: rtdb.chunkCount,
     transcriptChunkCount: typeof transcriptChunkCount === 'number' ? transcriptChunkCount : null,
+    capturedDurationMs,
+    scheduledDurationMs,
     audit,
     adminMode,
   })
@@ -685,16 +907,20 @@ async function auditOne(
     isDraft: session.isDraft == null ? 'UNAVAILABLE' : session.isDraft ? 'true' : 'false',
     scheduledStartIso: formatTs(session.scheduledStartMs),
     scheduledEndIso: formatTs(session.scheduledEndMs),
+    scheduledDurationMin: formatDurationMin(scheduledDurationMs),
     recordingId: recordingId || (adminMode ? '' : 'UNAVAILABLE'),
     rtdbExists: rtdb.exists == null ? 'UNAVAILABLE' : rtdb.exists ? 'true' : 'false',
     rtdbFeedState: rtdb.feedState,
     rtdbChunkCount: rtdb.chunkCount ?? 'UNAVAILABLE',
     rtdbFinalizedCount: rtdb.finalizedCount ?? 'UNAVAILABLE',
     rtdbFinalizedRatio: finalizedRatio,
-    rtdbFirstTs: formatTs(rtdb.firstTs),
-    rtdbLastTs: formatTs(rtdb.lastTs),
+    rtdbFirstTs: formatTs(rtdb.firstTs ?? transcriptFirstTs),
+    rtdbLastTs: formatTs(rtdb.lastTs ?? transcriptLastTs),
+    capturedDurationMin: formatDurationMin(capturedDurationMs),
+    durationFlag,
     transcriptChunkCount,
-    transcriptWordCount,
+    wordCount,
+    wordCountSource,
     auditEventCount,
     auditTimeline,
     status,
@@ -704,12 +930,24 @@ async function auditOne(
 }
 
 async function main() {
-  const adminMode = hasAdminCreds()
   console.log('[audit-show-sessions] READ-ONLY — no writes')
   console.log(`[audit] RTDB_ROOT=${RTDB_ROOT}`)
   console.log(`[audit] PUBLIC_APP_ORIGIN=${PUBLIC_APP_ORIGIN}`)
-  console.log(`[audit] Admin creds: ${adminMode ? 'present' : 'absent (public fallback)'}`)
+
+  const bridge = bridgeFirebaseCliToAdc()
+  console.log(`[audit] Auth bridge: ${bridge.detail}`)
+
+  const adminMode = hasAdminCreds()
+  console.log(`[audit] Admin SDK: ${adminMode ? 'ENABLED' : 'absent (public fallback)'}`)
+  console.log(`[audit] Project target: ${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || '(unset)'}`)
   console.log('[audit] Recall API: not queried (by design for this script)')
+
+  if (adminMode) {
+    // Fail loud if wrong project before scanning.
+    const { assertCorrectFirebaseProject } = await import('../lib/firebase/admin')
+    const checked = assertCorrectFirebaseProject()
+    console.log(`[audit] Project guard OK: ${checked.projectId}`)
+  }
 
   const loaded = adminMode
     ? await loadShowAndSessionsAdmin()
@@ -718,14 +956,15 @@ async function main() {
   console.log(
     `[audit] show=${loaded.show.showName} (${loaded.show.showId}) via ${loaded.show.source}`,
   )
-  console.log(`[audit] sessions=${loaded.sessions.length}${adminMode ? '' : ' (non-draft public only)'}`)
+  console.log(
+    `[audit] sessions=${loaded.sessions.length}${adminMode ? ' (includes drafts)' : ' (non-draft public only)'}`,
+  )
 
   const nowMs = Date.now()
-  const rows = await mapPool(loaded.sessions, 8, (session) =>
+  const rows = await mapPool(loaded.sessions, adminMode ? 4 : 8, (session) =>
     auditOne(session, loaded.show, adminMode, nowMs),
   )
 
-  // Stable schedule order already from loader; keep it.
   const outDir = join(process.cwd(), 'exports')
   mkdirSync(outDir, { recursive: true })
   const csvPath = join(outDir, `alf009-session-audit-${new Date().toISOString().slice(0, 10)}.csv`)
@@ -737,10 +976,40 @@ async function main() {
   for (const [k, v] of Object.entries(statusCounts(rows)).sort((a, b) => b[1] - a[1])) {
     console.log(`  ${v}\t${k}`)
   }
+
+  const orphan = rows.find((r) => r.sessionId === 'AAhZwKUOyu6Nw6GkFuSF')
+  if (orphan) {
+    console.log('\n[audit] ORPHAN DETAIL AAhZwKUOyu6Nw6GkFuSF:')
+    console.log(`  status=${orphan.status}`)
+    console.log(`  feedState=${orphan.feedState} rtdbChunks=${orphan.rtdbChunkCount}`)
+    console.log(`  audit=${orphan.auditTimeline}`)
+    console.log(`  notes=${orphan.notes}`)
+  }
+
+  const never = rows.filter((r) => r.status === 'NEVER STARTED' || r.status.startsWith('NEVER STARTED'))
+  if (never.length) {
+    console.log(`\n[audit] NEVER STARTED (${never.length}):`)
+    for (const r of never) {
+      console.log(
+        `  ${r.sessionId} | ${r.title.slice(0, 50)} | audit=${r.auditTimeline || '(none)'}`,
+      )
+    }
+  }
+
+  const short = rows.filter((r) => r.durationFlag)
+  if (short.length) {
+    console.log(`\n[audit] SHORT_CAPTURE flags (${short.length}):`)
+    for (const r of short.slice(0, 30)) {
+      console.log(
+        `  ${r.sessionId} | captured=${r.capturedDurationMin}m scheduled=${r.scheduledDurationMin}m | ${r.title.slice(0, 40)}`,
+      )
+    }
+  }
+
   console.log(`\n[audit] CSV: ${csvPath}`)
   if (!adminMode) {
     console.log(
-      '[audit] NOTE: Without Admin credentials, auditLog + transcripts/ + recordingId + draft sessions are UNAVAILABLE. Re-run with .env.local Admin SA for full flags (MIGRATION GAP / CAPTURED NOTHING / verified NEVER STARTED).',
+      '[audit] NOTE: Without Admin credentials, auditLog + transcripts/ + recordingId + draft sessions are UNAVAILABLE. Complete `firebase login --no-localhost` (or set a service account) and re-run.',
     )
   }
 }
@@ -749,4 +1018,3 @@ main().catch((err) => {
   console.error('[audit] fatal', err)
   process.exit(1)
 })
-

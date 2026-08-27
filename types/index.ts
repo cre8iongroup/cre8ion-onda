@@ -249,13 +249,29 @@ export interface ShowRoom {
  */
 export type FeedState = 'standby' | 'testing' | 'live' | 'stopping' | 'ended'
 
-export interface ApprovalState {
-  reviewedBy?: string
-  reviewedAt?: Timestamp
-  approvedBy?: string
-  approvedAt?: Timestamp
+/** Reviewer / post-event content pipeline — independent of live `feedState`. */
+export type ReviewStatus = 'needs_review' | 'in_review' | 'approved' | 'published'
+
+export interface ReviewHistoryEntry {
+  status: ReviewStatus
+  changedBy: string
+  changedAt: Timestamp
+}
+
+/**
+ * Session content-review state (Reviewer panel).
+ *
+ * "Published" is derived solely from `status === 'published'` — there is no
+ * separate publishedAt field. Admin UI that mutates this should eventually
+ * route through `lib/review/reviewState.ts` helpers so history stays consistent;
+ * no Admin UI work in Phase 6.
+ */
+export interface ReviewState {
+  status: ReviewStatus
+  statusChangedBy: string
+  statusChangedAt: Timestamp
   notes?: string
-  flagged?: boolean
+  history: ReviewHistoryEntry[]
 }
 
 export interface SessionDoc {
@@ -273,11 +289,18 @@ export interface SessionDoc {
    */
   isDraft: boolean
   feedState: FeedState
-  approvalState: ApprovalState
-  aiSummary?: string        // Markdown from Claude
+  reviewState: ReviewState
+  /**
+   * When false, session cannot reach reviewState.status === 'published'
+   * (Firestore rules + Reviewer UI). Default true on create. Console-only for now.
+   */
+  aiNotesConsent: boolean
+  consentSetBy?: string
+  consentSetAt?: Timestamp
+  /** Structured Claude summary — stored as JSON.stringify(ClaudeSummary). */
+  aiSummary?: string
   aiSummaryGeneratedAt?: Timestamp
   aiSummaryTriggeredBy?: string
-  publishedAt?: Timestamp
   /** Public download URL for the session QR (PNG preferred when both exist). */
   qrCodeUrl?: string
   /**

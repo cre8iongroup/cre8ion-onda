@@ -32,11 +32,26 @@ service cloud.firestore {
 
     function isAssignedToShow(showId) {
       let userData = getUserData();
-      // Admin always has access. Empty assignedShows = all shows for staff roles,
-      // but Contributors must be explicitly assigned (never implied all-access).
+      // Admin always has access.
+      // Empty assignedShows = all shows for editor/tech (and other non-restricted roles).
+      // Contributors AND Reviewers must be explicitly assigned (never implied all-access).
       return getRole() == 'admin'
         || showId in userData.assignedShows
-        || (userData.assignedShows.size() == 0 && getRole() != 'contributor');
+        || (userData.assignedShows.size() == 0
+            && getRole() != 'contributor'
+            && getRole() != 'reviewer');
+    }
+
+    /**
+     * Block any Session write that would leave reviewState.status == 'published'
+     * while aiNotesConsent === false. Missing aiNotesConsent is treated as true
+     * (matches create default). Applies to admin/editor and reviewer paths alike.
+     */
+    function sessionPublishConsentOk() {
+      return !('reviewState' in request.resource.data)
+        || request.resource.data.reviewState.status != 'published'
+        || !('aiNotesConsent' in resource.data)
+        || resource.data.aiNotesConsent == true;
     }
 
     function isTech() {
@@ -91,13 +106,19 @@ service cloud.firestore {
       match /sessions/{sessionId} {
         allow read: if canReadShow(showId);
         allow create: if isAdminOrEditor() && isAssignedToShow(showId);
-        // Admins/editors: full update. Tech: feedState only (Go Live control).
+        // Admins/editors: full update (consent guard still applies).
+        // Tech: feedState only (Go Live control).
+        // Reviewer: reviewState only (content pipeline — not feedState).
         // Contributor: no writes (QR download only).
-        allow update: if isSignedIn() && isAssignedToShow(showId) && (
+        allow update: if isSignedIn() && isAssignedToShow(showId) && sessionPublishConsentOk() && (
           isAdminOrEditor()
           || (
             isTech()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feedState'])
+          )
+          || (
+            isReviewer()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reviewState'])
           )
         );
         allow delete: if isAdmin();

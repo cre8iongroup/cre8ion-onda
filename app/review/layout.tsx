@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuthContext } from '@/context/AuthContext'
@@ -12,6 +12,17 @@ const REVIEW_NAV = [
 export default function ReviewLayout({ children }: { children: React.ReactNode }) {
   const { user, userDoc, capabilities, loading, signOut } = useAuthContext()
   const router = useRouter()
+
+  const isDedicatedReviewer = userDoc?.baseRole === 'reviewer'
+  const showAdminExit = !isDedicatedReviewer
+
+  const navItems = useMemo(() => {
+    if (!showAdminExit) return REVIEW_NAV
+    return [
+      { href: '/admin', label: 'Admin Panel', icon: '⚙️' },
+      ...REVIEW_NAV,
+    ]
+  }, [showAdminExit])
 
   useEffect(() => {
     if (loading) return
@@ -32,16 +43,21 @@ export default function ReviewLayout({ children }: { children: React.ReactNode }
     )
   }
 
+  const roleBadgeClass = isDedicatedReviewer ? 'badge-info' : 'badge-muted'
+  const roleLabel = userDoc?.baseRole ?? 'staff'
+
   return (
     <div className="panel-shell">
       <aside className="panel-sidebar" aria-label="Review navigation">
         <div className="sidebar-logo">
           <div className="sidebar-logo-mark">〜 cre8ion Onda</div>
-          <div className="sidebar-logo-sub">Reviewer Panel</div>
+          <div className="sidebar-logo-sub">
+            {showAdminExit ? 'Review' : 'Reviewer Panel'}
+          </div>
         </div>
 
         <nav>
-          {REVIEW_NAV.map(({ href, label, icon }) => (
+          {navItems.map(({ href, label, icon }) => (
             <Link key={href} href={href} className="nav-item">
               <span>{icon}</span>
               <span>{label}</span>
@@ -55,7 +71,9 @@ export default function ReviewLayout({ children }: { children: React.ReactNode }
           <p className="text-sm truncate" style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>
             {userDoc?.displayName || userDoc?.email}
           </p>
-          <span className="badge badge-info" style={{ marginBottom: 'var(--space-3)' }}>Reviewer</span>
+          <span className={`badge ${roleBadgeClass}`} style={{ marginBottom: 'var(--space-3)' }}>
+            {roleLabel}
+          </span>
           <button
             id="btn-review-signout"
             className="btn btn-ghost btn-sm w-full"
@@ -71,7 +89,7 @@ export default function ReviewLayout({ children }: { children: React.ReactNode }
       </aside>
 
       <main className="panel-main">
-        {children}
+        <div className="panel-content">{children}</div>
       </main>
     </div>
   )

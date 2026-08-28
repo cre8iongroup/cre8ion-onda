@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useAuthContext } from '@/context/AuthContext'
 
 const REVIEW_NAV = [
-  { href: '/review', label: 'Sessions to Review', icon: '📋' },
+  { href: '/review', label: 'Shows', icon: '📋' },
 ]
 
 export default function ReviewLayout({ children }: { children: React.ReactNode }) {

@@ -5,105 +5,104 @@ import Link from 'next/link'
 import {
   collection,
   doc,
-  getDoc,
-  getDocs,
+  onSnapshot,
   orderBy,
   query,
+  type Timestamp,
 } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
-import { formatSessionDateTime } from '@/lib/attendee/schedule'
-import { sessionStatusBadgeClass, sessionStatusLabel } from '@/lib/sessionStatus'
-import { normalizeReviewState } from '@/lib/review/sessionReview'
-import type { SessionDoc, ShowDoc, WithId } from '@/types'
-import ReviewStatusBadge from '@/components/review/ReviewStatusBadge'
+import type { ShowDoc, WithId } from '@/types'
 
-type ReviewListRow = {
-  showId: string
-  showName: string
-  showTimezone: string
-  session: WithId<SessionDoc>
+function formatDateRange(start?: Timestamp, end?: Timestamp): string {
+  if (!start || !end) return 'Dates TBD'
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' }
+  return `${start.toDate().toLocaleDateString(undefined, opts)} – ${end.toDate().toLocaleDateString(undefined, opts)}`
 }
 
-export default function ReviewSessionsPage() {
+export default function ReviewShowsPage() {
   const { userDoc } = useAuthContext()
-  const [rows, setRows] = useState<ReviewListRow[]>([])
+  const [shows, setShows] = useState<WithId<ShowDoc>[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const isAdmin = userDoc?.baseRole === 'admin'
   const assignedShowIds = useMemo(
     () => (Array.isArray(userDoc?.assignedShows) ? userDoc!.assignedShows : []),
     [userDoc?.assignedShows],
   )
 
   useEffect(() => {
-    let cancelled = false
+    if (!userDoc) return
 
-    async function load() {
-      if (!userDoc) return
-      setLoading(true)
-      setError(null)
+    const fs = getClientFirestore()
 
-      if (assignedShowIds.length === 0) {
-        setRows([])
-        setLoading(false)
-        return
-      }
+    if (isAdmin) {
+      const q = query(collection(fs, 'shows'), orderBy('createdAt', 'desc'))
+      const unsub = onSnapshot(
+        q,
+        (snap) => {
+          setShows(snap.docs.map((d) => ({ id: d.id, ...(d.data() as ShowDoc) })))
+          setError(null)
+          setLoading(false)
+        },
+        (err) => {
+          console.error('ReviewShowsPage: failed to load shows', err)
+          setError(err.message || 'Failed to load shows.')
+          setLoading(false)
+        },
+      )
+      return () => unsub()
+    }
 
-      try {
-        const fs = getClientFirestore()
-        const out: ReviewListRow[] = []
+    if (assignedShowIds.length === 0) {
+      setShows([])
+      setLoading(false)
+      return
+    }
 
-        for (const showId of assignedShowIds) {
-          const showSnap = await getDoc(doc(fs, 'shows', showId))
-          if (!showSnap.exists()) continue
-          const show = showSnap.data() as ShowDoc
-          const tz = show.showTimezone || 'America/New_York'
+    setLoading(true)
+    const unsubs: Array<() => void> = []
+    const showMap = new Map<string, WithId<ShowDoc>>()
 
-          const sessionsSnap = await getDocs(
-            query(
-              collection(fs, 'shows', showId, 'sessions'),
-              orderBy('scheduledStart', 'asc'),
-            ),
-          )
+    function syncShows() {
+      setShows(
+        assignedShowIds
+          .map((id) => showMap.get(id))
+          .filter((s): s is WithId<ShowDoc> => Boolean(s)),
+      )
+      setLoading(false)
+    }
 
-          for (const sessDoc of sessionsSnap.docs) {
-            out.push({
-              showId,
-              showName: show.name,
-              showTimezone: tz,
-              session: { id: sessDoc.id, ...(sessDoc.data() as SessionDoc) },
-            })
+    for (const showId of assignedShowIds) {
+      const unsub = onSnapshot(
+        doc(fs, 'shows', showId),
+        (snap) => {
+          if (snap.exists()) {
+            showMap.set(showId, { id: snap.id, ...(snap.data() as ShowDoc) })
+          } else {
+            showMap.delete(showId)
           }
-        }
-
-        out.sort(
-          (a, b) =>
-            (a.session.scheduledStart?.toMillis?.() ?? 0) -
-            (b.session.scheduledStart?.toMillis?.() ?? 0),
-        )
-
-        if (!cancelled) setRows(out)
-      } catch (err: unknown) {
-        console.error('ReviewSessionsPage: load failed', err)
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load sessions.')
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+          syncShows()
+        },
+        (err) => {
+          console.error('ReviewShowsPage: failed to load assigned show', showId, err)
+          setError(err.message || 'Failed to load assigned shows.')
+          setLoading(false)
+        },
+      )
+      unsubs.push(unsub)
     }
 
-    void load()
     return () => {
-      cancelled = true
+      for (const unsub of unsubs) unsub()
     }
-  }, [userDoc, assignedShowIds])
+  }, [userDoc, isAdmin, assignedShowIds])
 
   if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ padding: 'var(--space-8)' }}>
-        <span className="spinner" aria-label="Loading sessions" />
+        <span className="spinner" aria-label="Loading shows" />
       </div>
     )
   }
@@ -112,10 +111,10 @@ export default function ReviewSessionsPage() {
     <div>
       <header style={{ marginBottom: 'var(--space-6)' }}>
         <h1 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-2)' }}>
-          Sessions to Review
+          Shows to Review
         </h1>
         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-          All sessions from your assigned shows — including incomplete or missing content.
+          Select a show to review its sessions.
         </p>
       </header>
 
@@ -125,74 +124,46 @@ export default function ReviewSessionsPage() {
         </div>
       ) : null}
 
-      {assignedShowIds.length === 0 ? (
+      {!isAdmin && assignedShowIds.length === 0 ? (
         <div className="card" style={{ padding: 'var(--space-5)' }}>
           <p style={{ marginBottom: 'var(--space-2)' }}>No shows assigned.</p>
           <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
             Ask an administrator to assign you to one or more shows before you can review sessions.
           </p>
         </div>
-      ) : rows.length === 0 ? (
+      ) : shows.length === 0 ? (
         <div className="card" style={{ padding: 'var(--space-5)' }}>
           <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            No sessions found on your assigned shows.
+            No shows found.
           </p>
         </div>
       ) : (
-        <div className="form-group">
-          {rows.map(({ showId, showName, showTimezone, session }) => {
-            const reviewState = normalizeReviewState(session, userDoc?.email ?? 'reviewer')
-            const startMs = session.scheduledStart?.toMillis?.() ?? 0
-
-            return (
-              <article key={`${showId}-${session.id}`} className="card show-list-item">
-                <div
-                  className="flex items-center justify-between gap-4"
-                  style={{ flexWrap: 'wrap' }}
-                >
-                  <div>
-                    <h4 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>
-                      <Link href={`/review/${showId}/${session.id}`}>
-                        {session.friendlyName || session.title}
-                      </Link>
-                    </h4>
-                    <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                      {showName}
-                    </p>
-                    <p
-                      className="text-sm"
-                      style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}
-                    >
-                      {startMs > 0
-                        ? formatSessionDateTime(startMs, showTimezone)
-                        : 'Schedule TBD'}
-                    </p>
-                  </div>
-                  <div className="flex gap-2" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                    <ReviewStatusBadge status={reviewState.status} />
-                    <span
-                      className={`badge ${sessionStatusBadgeClass({
-                        isDraft: session.isDraft,
-                        feedState: session.feedState,
-                      })}`}
-                      title="Live session state (read-only)"
-                    >
-                      {sessionStatusLabel(
-                        { isDraft: session.isDraft, feedState: session.feedState },
-                        'admin',
-                      )}
-                    </span>
-                    <Link
-                      href={`/review/${showId}/${session.id}`}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      Review
-                    </Link>
-                  </div>
+        <div className="show-list">
+          {shows.map((show) => (
+            <Link
+              key={show.id}
+              id={`link-review-show-${show.id}`}
+              href={`/review/${show.id}`}
+              className="card card-interactive show-list-item"
+            >
+              <div className="flex items-center justify-between gap-4" style={{ flexWrap: 'wrap' }}>
+                <div>
+                  <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-1)' }}>
+                    {show.name}
+                  </h2>
+                  <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                    {show.clientName}
+                  </p>
+                  <p
+                    className="text-sm"
+                    style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}
+                  >
+                    {formatDateRange(show.startDate, show.endDate)}
+                  </p>
                 </div>
-              </article>
-            )
-          })}
+              </div>
+            </Link>
+          ))}
         </div>
       )}
     </div>

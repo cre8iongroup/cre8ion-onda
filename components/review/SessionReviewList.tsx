@@ -1,11 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { formatSessionDateTime } from '@/lib/attendee/schedule'
 import { sessionStatusBadgeClass, sessionStatusLabel } from '@/lib/sessionStatus'
 import { normalizeReviewState } from '@/lib/review/sessionReview'
-import { sortSessionsByScheduledStart } from '@/lib/sessions/sessionFilters'
+import { sortSessionsByScheduledStart, isAvTestSession } from '@/lib/sessions/sessionFilters'
 import { useSessionFilters } from '@/hooks/useSessionFilters'
 import SessionFilterBar from '@/components/sessions/SessionFilterBar'
 import type { ReviewStatus, SessionDoc, ShowRoom, WithId } from '@/types'
@@ -35,6 +35,8 @@ export default function SessionReviewList({
   loading = false,
   emptyMessage = 'No sessions found.',
 }: SessionReviewListProps) {
+  const [hideAvTestSessions, setHideAvTestSessions] = useState(true)
+
   const getReviewStatus = useCallback(
     (session: WithId<SessionDoc>): ReviewStatus =>
       normalizeReviewState(session, reviewerEmail).status,
@@ -58,10 +60,11 @@ export default function SessionReviewList({
     clearFilters,
   } = useSessionFilters(sessions, { getReviewStatus })
 
-  const visibleSessions = useMemo(
-    () => sortSessionsByScheduledStart(filteredSessions, 'asc'),
-    [filteredSessions],
-  )
+  const visibleSessions = useMemo(() => {
+    const sorted = sortSessionsByScheduledStart(filteredSessions, 'asc')
+    if (!hideAvTestSessions) return sorted
+    return sorted.filter((session) => !isAvTestSession(session))
+  }, [filteredSessions, hideAvTestSessions])
 
   if (loading) {
     return (
@@ -100,6 +103,9 @@ export default function SessionReviewList({
         showReviewStatusFilter
         reviewStatus={reviewStatus}
         onReviewStatusChange={setReviewStatus}
+        showHideAvTestSessionsToggle
+        hideAvTestSessions={hideAvTestSessions}
+        onHideAvTestSessionsChange={setHideAvTestSessions}
       />
 
       {visibleSessions.length === 0 ? (

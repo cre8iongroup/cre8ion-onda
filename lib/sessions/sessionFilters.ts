@@ -1,6 +1,13 @@
 import type { Timestamp } from 'firebase/firestore'
 import type { ReviewStatus, SessionDoc, WithId } from '@/types'
 
+export function isAvTestSession(session: Pick<SessionDoc, 'title' | 'friendlyName'>): boolean {
+  const needle = 'av test'
+  const title = (session.title || '').toLowerCase()
+  const friendly = (session.friendlyName || '').toLowerCase()
+  return title.includes(needle) || friendly.includes(needle)
+}
+
 export type TimeBucket = 'morning' | 'afternoon' | 'evening'
 
 export type TimeSort = 'asc' | 'desc'

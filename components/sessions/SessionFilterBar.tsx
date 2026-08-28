@@ -31,6 +31,9 @@ type SessionFilterBarProps = {
   showTimeSort?: boolean
   timeSort?: TimeSort
   onTimeSortChange?: (value: TimeSort) => void
+  showHideAvTestSessionsToggle?: boolean
+  hideAvTestSessions?: boolean
+  onHideAvTestSessionsChange?: (value: boolean) => void
 }
 
 export default function SessionFilterBar({
@@ -53,6 +56,9 @@ export default function SessionFilterBar({
   showTimeSort = false,
   timeSort = 'asc',
   onTimeSortChange,
+  showHideAvTestSessionsToggle = false,
+  hideAvTestSessions = true,
+  onHideAvTestSessionsChange,
 }: SessionFilterBarProps) {
   const sortedRooms = useMemo(() => sortRoomsByName(rooms), [rooms])
 
@@ -167,6 +173,22 @@ export default function SessionFilterBar({
             <option value="asc">Earliest first</option>
             <option value="desc">Latest first</option>
           </select>
+        </div>
+      ) : null}
+      {showHideAvTestSessionsToggle && onHideAvTestSessionsChange ? (
+        <div className="field" style={{ margin: 0, flex: '0 1 auto', minWidth: 0 }}>
+          <label className="checkbox-row" style={{ marginTop: '1.5rem' }}>
+            <input
+              id={`${idPrefix}-hide-av-test`}
+              type="checkbox"
+              checked={hideAvTestSessions}
+              onChange={(e) => onHideAvTestSessionsChange(e.target.checked)}
+            />
+            <span>Hide test sessions</span>
+          </label>
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
+            Hides sessions with “AV Test” in the title.
+          </p>
         </div>
       ) : null}
       {filtersActive ? (

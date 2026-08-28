@@ -27,7 +27,7 @@ import TimezonePanel from './TimezonePanel'
 import LanguagesPanel from './LanguagesPanel'
 import GlossaryPanel from './GlossaryPanel'
 import QrCodesTab from './QrCodesTab'
-import SessionReviewList from '@/components/review/SessionReviewList'
+import ShowReviewAccessPanel from './ShowReviewAccessPanel'
 import { showPublicUrl } from '@/lib/attendee/urls'
 import { canHideSession } from '@/lib/sessionStatus'
 
@@ -54,6 +54,8 @@ export default function ShowDetail({ showId }: { showId: string }) {
   const [activeTab, setActiveTab] = useState<ShowTab | null>(null)
 
   const canEditShows = Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)
+  const canApproveTranscripts = Boolean(capabilities?.canApproveTranscripts)
+  const isAdminRole = userDoc?.baseRole === 'admin'
   const canManageBranding = Boolean(capabilities?.canManageBranding)
   const canDownloadQr = Boolean(capabilities?.canDownloadQr)
   const canManageTech = Boolean(capabilities?.canManageTech)
@@ -68,11 +70,11 @@ export default function ShowDetail({ showId }: { showId: string }) {
     if (canEditShows) list.push({ id: 'sessions', label: 'Sessions' })
     // Future gating point: add `&& show.notesEnabled` (or similar entitlement) here
     // when a show-level notes toggle ships — no tab restructure needed.
-    if (canEditShows) list.push({ id: 'review', label: 'Review' })
+    if (canApproveTranscripts) list.push({ id: 'review', label: 'Review' })
     if (canDownloadQr) list.push({ id: 'qr', label: 'QR codes' })
     if (canManageTech) list.push({ id: 'tech', label: 'Tech' })
     return list
-  }, [canEditShows, canManageBranding, canDownloadQr, canManageTech])
+  }, [canEditShows, canApproveTranscripts, canManageBranding, canDownloadQr, canManageTech])
 
   useEffect(() => {
     if (tabs.length === 0) {
@@ -476,16 +478,10 @@ export default function ShowDetail({ showId }: { showId: string }) {
       {activeTab === 'review' ? (
         <section>
           <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Review</h2>
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
-            Post-event content review and publishing. Opens the reviewer detail view for each session.
-          </p>
-          <SessionReviewList
+          <ShowReviewAccessPanel
             showId={show.id}
-            showTimezone={show.showTimezone || 'America/New_York'}
-            sessions={sessions}
-            reviewerEmail={userDoc?.email ?? user?.email ?? 'admin'}
-            loading={loadingSessions}
-            emptyMessage="No sessions on this show yet."
+            active={activeTab === 'review'}
+            isAdmin={isAdminRole}
           />
         </section>
       ) : null}

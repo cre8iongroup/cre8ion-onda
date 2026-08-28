@@ -1,8 +1,11 @@
 'use client'
 
 import { useEffect, useId, useState } from 'react'
-import { doc, updateDoc } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
+import {
+  setUserAssignedShows,
+  validateReviewerAssignedShows,
+} from '@/lib/users/assignedShows'
 import type { ShowDoc, UserDoc, WithId } from '@/types'
 
 interface EditUserModalProps {
@@ -58,8 +61,9 @@ export default function EditUserModal({
       return
     }
 
-    if (user.baseRole === 'reviewer' && assignedShows.length === 0) {
-      setError('Reviewers must be assigned to at least one show.')
+    const validationError = validateReviewerAssignedShows(user.baseRole, assignedShows)
+    if (validationError) {
+      setError(validationError)
       return
     }
 
@@ -67,8 +71,7 @@ export default function EditUserModal({
     setError(null)
 
     try {
-      const fs = getClientFirestore()
-      await updateDoc(doc(fs, 'users', user.id), { assignedShows })
+      await setUserAssignedShows(user.id, assignedShows)
       onSaved()
       onClose()
     } catch (err: unknown) {

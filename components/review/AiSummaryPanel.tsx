@@ -1,7 +1,9 @@
 'use client'
 
-import { parseAiSummary } from '@/lib/review/parseAiSummary'
+import { useState } from 'react'
+import { formatSummaryPlainText, parseAiSummary } from '@/lib/review/parseAiSummary'
 import AiSummaryGenerateControls from '@/components/review/AiSummaryGenerateControls'
+import SessionPdfExport from '@/components/review/SessionPdfExport'
 import type { ReviewState, SessionDoc, TranscriptChunk, WithId } from '@/types'
 
 type Props = {
@@ -12,6 +14,10 @@ type Props = {
   aiSummary: string | undefined
   chunks: WithId<TranscriptChunk>[]
   canGenerate: boolean
+  showName: string
+  scheduledLabel: string | null
+  primaryColor?: string
+  publicSummaryUrl: string | null
 }
 
 function AiSummaryDisplay({ aiSummary }: { aiSummary: string }) {
@@ -98,24 +104,72 @@ export default function AiSummaryPanel({
   aiSummary,
   chunks,
   canGenerate,
+  showName,
+  scheduledLabel,
+  primaryColor,
+  publicSummaryUrl,
 }: Props) {
+  const [copiedSummary, setCopiedSummary] = useState(false)
+  const [copiedUrl, setCopiedUrl] = useState(false)
+
   const parsed = parseAiSummary(aiSummary)
 
-  return (
-    <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-      <AiSummaryGenerateControls
-        showId={showId}
-        sessionId={sessionId}
-        reviewState={reviewState}
-        aiSummary={aiSummary}
-        chunks={chunks}
-        canGenerate={canGenerate}
-      />
+  async function copySummary() {
+    if (!parsed.ok) return
+    try {
+      await navigator.clipboard.writeText(formatSummaryPlainText(parsed.summary))
+      setCopiedSummary(true)
+      window.setTimeout(() => setCopiedSummary(false), 2000)
+    } catch {
+      /* clipboard denied */
+    }
+  }
+
+  async function copyPublicUrl() {
+    if (!publicSummaryUrl) return
+    try {
+      await navigator.clipboard.writeText(publicSummaryUrl)
+      setCopiedUrl(true)
+      window.setTimeout(() => setCopiedUrl(false), 2000)
+    } catch {
+      /* clipboard denied */
+    }
+  }
+
+  const heroActions = (
+    <>
       {parsed.ok ? (
-        <div className="card" style={{ padding: 'var(--space-5)' }}>
-          <AiSummaryDisplay aiSummary={aiSummary!} />
-        </div>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => void copySummary()}>
+          {copiedSummary ? 'Copied!' : 'Copy summary'}
+        </button>
       ) : null}
-    </div>
+      <SessionPdfExport
+        showName={showName}
+        session={session}
+        chunks={chunks}
+        scheduledLabel={scheduledLabel}
+        primaryColor={primaryColor}
+        variant="inline"
+      />
+      {publicSummaryUrl ? (
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void copyPublicUrl()}>
+          {copiedUrl ? 'Copied!' : 'Copy public URL'}
+        </button>
+      ) : null}
+    </>
+  )
+
+  return (
+    <AiSummaryGenerateControls
+      showId={showId}
+      sessionId={sessionId}
+      reviewState={reviewState}
+      aiSummary={aiSummary}
+      chunks={chunks}
+      canGenerate={canGenerate}
+      variant="hero"
+      heroActions={heroActions}
+      summaryDisplay={parsed.ok ? <AiSummaryDisplay aiSummary={aiSummary!} /> : null}
+    />
   )
 }

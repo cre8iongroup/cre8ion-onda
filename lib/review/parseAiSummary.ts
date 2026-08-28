@@ -57,3 +57,26 @@ export function parseAiSummary(raw: string | null | undefined): ParseAiSummaryRe
     },
   }
 }
+
+/** Plain-text export for clipboard copy in the reviewer panel. */
+export function formatSummaryPlainText(summary: ClaudeSummary): string {
+  const lines: string[] = [summary.executiveSummary]
+
+  if (summary.keyTopics.length > 0) {
+    lines.push('', 'Key topics', ...summary.keyTopics.map((topic) => `- ${topic}`))
+  }
+
+  if (summary.actionItems.length > 0) {
+    lines.push('', 'Action items', ...summary.actionItems.map((item) => `- ${item}`))
+  }
+
+  if (summary.quotes.length > 0) {
+    lines.push('', 'Notable quotes')
+    for (const quote of summary.quotes) {
+      const attribution = quote.speaker ? `${quote.speaker}: ` : ''
+      lines.push(`"${attribution}${quote.text}"`)
+    }
+  }
+
+  return lines.join('\n')
+}

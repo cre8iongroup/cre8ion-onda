@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { parseAiSummary } from '@/lib/review/parseAiSummary'
 import { getSummarizeEligibility } from '@/lib/review/transcriptSummarize'
 import { callSummarizeSession, SummarizeSessionError } from '@/lib/review/summarizeSession'
@@ -17,6 +17,9 @@ type Props = {
   aiSummary: string | undefined
   chunks: WithId<TranscriptChunk>[]
   canGenerate: boolean
+  variant?: 'default' | 'hero'
+  heroActions?: ReactNode
+  summaryDisplay?: ReactNode
 }
 
 export default function AiSummaryGenerateControls({
@@ -26,6 +29,9 @@ export default function AiSummaryGenerateControls({
   aiSummary,
   chunks,
   canGenerate,
+  variant = 'default',
+  heroActions,
+  summaryDisplay,
 }: Props) {
   const [customInstructions, setCustomInstructions] = useState('')
   const [showInstructions, setShowInstructions] = useState(false)
@@ -69,10 +75,24 @@ export default function AiSummaryGenerateControls({
     }
   }
 
+  const generateButton =
+    canGenerate && canAttemptGenerate ? (
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        disabled={busy || !canAttemptGenerate}
+        onClick={() => void handleGenerate()}
+      >
+        {busy ? 'Generating…' : buttonLabel}
+      </button>
+    ) : null
+
   if (eligibility.state === 'insufficient_content') {
-    return (
-      <div className="card" style={{ padding: 'var(--space-5)' }}>
-        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-2)' }}>AI summary</h3>
+    const body = (
+      <>
+        {variant === 'default' ? (
+          <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-2)' }}>AI summary</h3>
+        ) : null}
         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Not enough transcript content to generate a summary yet
           {eligibility.chunkCount === 0
@@ -80,8 +100,30 @@ export default function AiSummaryGenerateControls({
             : ` (${eligibility.charCount} characters; minimum is 200).`}
         </p>
         <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
-          Use the recoverable content check below if you need to diagnose missing transcript data.
+          Expand the source content section below if you need to diagnose missing transcript data.
         </p>
+      </>
+    )
+
+    if (variant === 'hero') {
+      return (
+        <div
+          className="card"
+          style={{
+            padding: 'var(--space-5)',
+            borderColor: 'var(--color-accent)',
+            boxShadow: 'var(--shadow-md)',
+          }}
+        >
+          <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>AI summary</h2>
+          {body}
+        </div>
+      )
+    }
+
+    return (
+      <div className="card" style={{ padding: 'var(--space-5)' }}>
+        {body}
       </div>
     )
   }
@@ -93,24 +135,17 @@ export default function AiSummaryGenerateControls({
 
   const showEmptyMessage = !parsed.ok
 
-  return (
-    <div className="card" style={{ padding: 'var(--space-5)' }}>
-      <div
-        className="flex items-center justify-between gap-4"
-        style={{ flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}
-      >
-        <h3 style={{ fontSize: 'var(--text-md)', margin: 0 }}>AI summary</h3>
-        {canGenerate ? (
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={busy || !canAttemptGenerate}
-            onClick={() => void handleGenerate()}
-          >
-            {busy ? 'Generating…' : buttonLabel}
-          </button>
-        ) : null}
-      </div>
+  const body = (
+    <>
+      {variant === 'default' ? (
+        <div
+          className="flex items-center justify-between gap-4"
+          style={{ flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}
+        >
+          <h3 style={{ fontSize: 'var(--text-md)', margin: 0 }}>AI summary</h3>
+          {generateButton}
+        </div>
+      ) : null}
 
       {!parsed.ok && showEmptyMessage ? (
         <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
@@ -119,7 +154,7 @@ export default function AiSummaryGenerateControls({
       ) : null}
 
       {canGenerate && canAttemptGenerate ? (
-        <div style={{ marginBottom: 'var(--space-4)' }}>
+        <div style={{ marginBottom: variant === 'default' ? 'var(--space-4)' : 0 }}>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -152,10 +187,52 @@ export default function AiSummaryGenerateControls({
       ) : null}
 
       {error ? (
-        <div className="alert alert-error" role="alert">
+        <div className="alert alert-error" role="alert" style={{ marginTop: 'var(--space-4)' }}>
           {error}
         </div>
       ) : null}
+    </>
+  )
+
+  if (variant === 'hero') {
+    return (
+      <div
+        className="card"
+        style={{
+          padding: 'var(--space-5)',
+          borderColor: 'var(--color-accent)',
+          boxShadow: 'var(--shadow-md)',
+        }}
+      >
+        <div
+          className="flex items-center justify-between gap-4"
+          style={{ flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}
+        >
+          <h2 style={{ fontSize: 'var(--text-lg)', margin: 0 }}>AI summary</h2>
+          <div className="flex gap-2" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+            {generateButton}
+            {heroActions}
+          </div>
+        </div>
+        {body}
+        {summaryDisplay ? (
+          <div
+            style={{
+              marginTop: 'var(--space-5)',
+              paddingTop: 'var(--space-5)',
+              borderTop: '1px solid var(--color-border)',
+            }}
+          >
+            {summaryDisplay}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  return (
+    <div className="card" style={{ padding: 'var(--space-5)' }}>
+      {body}
     </div>
   )
 }

@@ -23,7 +23,7 @@ export function reviewStatusBadgeClass(status: ReviewState['status']): string {
     case 'approved':
       return 'badge-info'
     case 'in_review':
-      return 'badge-live'
+      return 'badge-standby'
     case 'needs_review':
     default:
       return 'badge-muted'

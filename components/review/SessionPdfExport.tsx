@@ -11,6 +11,7 @@ type Props = {
   chunks: WithId<TranscriptChunk>[]
   scheduledLabel: string | null
   primaryColor?: string
+  variant?: 'default' | 'inline'
 }
 
 export default function SessionPdfExport({
@@ -19,6 +20,7 @@ export default function SessionPdfExport({
   chunks,
   scheduledLabel,
   primaryColor = '#5b3aee',
+  variant = 'default',
 }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -61,6 +63,26 @@ export default function SessionPdfExport({
     } finally {
       setBusy(false)
     }
+  }
+
+  if (variant === 'inline') {
+    return (
+      <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={busy}
+          onClick={() => void downloadPdf()}
+        >
+          {busy ? 'Generating…' : 'Download PDF'}
+        </button>
+        {error ? (
+          <span className="text-sm field-error" role="alert" style={{ marginTop: 'var(--space-1)' }}>
+            {error}
+          </span>
+        ) : null}
+      </span>
+    )
   }
 
   return (

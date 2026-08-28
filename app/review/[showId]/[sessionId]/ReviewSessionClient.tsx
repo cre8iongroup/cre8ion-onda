@@ -22,7 +22,6 @@ import TranscriptPanel from '@/components/review/TranscriptPanel'
 import AiSummaryPanel from '@/components/review/AiSummaryPanel'
 import AudioDownloadButton from '@/components/review/AudioDownloadButton'
 import ContentHealthPanel from '@/components/review/ContentHealthPanel'
-import SessionPdfExport from '@/components/review/SessionPdfExport'
 import type { SessionDoc, ShowDoc, TranscriptChunk, WithId } from '@/types'
 
 export default function ReviewSessionClient({
@@ -187,6 +186,7 @@ export default function ReviewSessionClient({
           userId={user?.uid ?? userDoc?.email ?? 'reviewer'}
           publicSummaryUrl={publicSummaryUrl}
         />
+
         <AiSummaryPanel
           showId={showId}
           sessionId={sessionId}
@@ -195,22 +195,41 @@ export default function ReviewSessionClient({
           aiSummary={session.aiSummary}
           chunks={chunks}
           canGenerate={Boolean(capabilities?.canApproveTranscripts)}
-        />
-        <TranscriptPanel chunks={chunks} />
-        <AudioDownloadButton
-          audioStoragePath={session.audioStoragePath}
-          sessionLabel={session.friendlyName || session.title}
-        />
-        <ContentHealthPanel session={session} chunks={chunks} />
-        <SessionPdfExport
           showName={show.name}
-          session={session}
-          chunks={chunks}
-          scheduledLabel={
-            startMs > 0 ? formatSessionDateTime(startMs, tz) : null
-          }
+          scheduledLabel={startMs > 0 ? formatSessionDateTime(startMs, tz) : null}
           primaryColor={show.branding?.primaryColor}
+          publicSummaryUrl={publicSummaryUrl}
         />
+
+        <details style={{ marginTop: 'var(--space-2)' }}>
+          <summary
+            className="text-sm"
+            style={{
+              cursor: 'pointer',
+              color: 'var(--color-text-muted)',
+              fontWeight: 600,
+              userSelect: 'none',
+              padding: 'var(--space-2) 0',
+            }}
+          >
+            Transcript, audio &amp; content diagnostics
+          </summary>
+          <div
+            className="form-group"
+            style={{
+              marginTop: 'var(--space-4)',
+              paddingTop: 'var(--space-4)',
+              borderTop: '1px solid var(--color-border)',
+            }}
+          >
+            <TranscriptPanel chunks={chunks} />
+            <AudioDownloadButton
+              audioStoragePath={session.audioStoragePath}
+              sessionLabel={session.friendlyName || session.title}
+            />
+            <ContentHealthPanel session={session} chunks={chunks} />
+          </div>
+        </details>
       </div>
     </div>
   )

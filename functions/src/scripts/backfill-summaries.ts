@@ -5,8 +5,7 @@
  *
  * Usage (from repo root):
  *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/cre8ion-onda-sa.json \
- *   NEXT_PUBLIC_FIREBASE_PROJECT_ID=cre8ion-onda \
- *   NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://cre8ion-onda-default-rtdb.firebaseio.com \
+ *   FIREBASE_PROJECT_ID=cre8ion-onda \
  *   npx tsx functions/src/scripts/backfill-summaries.ts
  *
  * Real run (explicit flag required):
@@ -18,10 +17,12 @@
  */
 
 import type { Firestore } from 'firebase-admin/firestore'
-import { getAdminFirestore } from '../../../lib/firebase/admin'
-import { parseAiSummary } from '../../../lib/review/parseAiSummary'
-import { MIN_TRANSCRIPT_CHARS } from '../../../lib/review/transcriptSummarize'
-import { isAvTestSession } from '../../../lib/sessions/sessionFilters'
+import { getScriptFirestore } from './adminInit'
+import {
+  MIN_TRANSCRIPT_CHARS,
+  isAvTestSession,
+  parseAiSummary,
+} from './backfillFilters'
 import type { RunSummarizeFailureReason } from '../shared/runSummarizeForSession'
 import { computeTranscriptStats } from '../shared/transcriptStats'
 
@@ -139,7 +140,7 @@ function failureLabel(reason: RunSummarizeFailureReason): string {
 async function main() {
   const { execute, concurrency } = parseArgs(process.argv.slice(2))
 
-  const firestore = getAdminFirestore()
+  const firestore = getScriptFirestore()
 
   console.log('=== Summary backfill ===')
   console.log(`Mode: ${execute ? 'EXECUTE (Claude calls + Firestore writes)' : 'DRY RUN (read-only)'}`)

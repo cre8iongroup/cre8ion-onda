@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { getMetadata, ref } from 'firebase/storage'
 import { getClientStorage } from '@/lib/firebase/client'
 import { runContentHealthChecks } from '@/lib/review/contentHealth'
+import { userFacingError } from '@/lib/review/userFacingError'
 import type { SessionDoc, TranscriptChunk, WithId } from '@/types'
 
 type Props = {
@@ -39,8 +40,7 @@ export default function ContentHealthPanel({ session, chunks }: Props) {
       })
       setFindings(result.findings)
     } catch (err: unknown) {
-      console.error('ContentHealthPanel: check failed', err)
-      setError(err instanceof Error ? err.message : 'Check failed.')
+      setError(userFacingError(err, 'The content check couldn\'t be completed.'))
     } finally {
       setBusy(false)
     }

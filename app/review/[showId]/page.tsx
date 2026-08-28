@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
+import { userFacingError } from '@/lib/review/userFacingError'
 import SessionReviewList from '@/components/review/SessionReviewList'
 import type { SessionDoc, ShowDoc, WithId } from '@/types'
 
@@ -71,8 +72,7 @@ export default function ReviewShowSessionsPage() {
         setLoadingShow(false)
       },
       (err) => {
-        console.error('ReviewShowSessionsPage: failed to load show', err)
-        setError(err.message || 'Failed to load show.')
+        setError(userFacingError(err, 'This session couldn\'t be loaded.'))
         setLoadingShow(false)
       },
     )
@@ -88,8 +88,7 @@ export default function ReviewShowSessionsPage() {
         setLoadingSessions(false)
       },
       (err) => {
-        console.error('ReviewShowSessionsPage: failed to load sessions', err)
-        setError(err.message || 'Failed to load sessions.')
+        setError(userFacingError(err, 'This session couldn\'t be loaded.'))
         setLoadingSessions(false)
       },
     )
@@ -169,6 +168,7 @@ export default function ReviewShowSessionsPage() {
         showTimezone={showTimezone}
         sessions={sessions}
         reviewerEmail={userDoc?.email ?? 'reviewer'}
+        rooms={show.rooms ?? []}
         loading={loadingSessions}
         emptyMessage="No sessions found on this show."
       />

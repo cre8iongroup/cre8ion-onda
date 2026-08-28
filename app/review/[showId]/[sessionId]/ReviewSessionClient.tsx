@@ -16,6 +16,7 @@ import { formatSessionDateTime } from '@/lib/attendee/schedule'
 import { sessionStatusBadgeClass, sessionStatusLabel } from '@/lib/sessionStatus'
 import { isSessionPublished } from '@/lib/review/reviewState'
 import { normalizeReviewState } from '@/lib/review/sessionReview'
+import { userFacingError } from '@/lib/review/userFacingError'
 import ReviewStatusControls from '@/components/review/ReviewStatusControls'
 import TranscriptPanel from '@/components/review/TranscriptPanel'
 import AiSummaryPanel from '@/components/review/AiSummaryPanel'
@@ -68,8 +69,7 @@ export default function ReviewSessionClient({
         maybeDone()
       },
       (err) => {
-        console.error('ReviewSessionClient: show listen failed', err)
-        setError('Failed to load show.')
+        setError(userFacingError(err, 'This session couldn\'t be loaded.'))
         showOk = true
         maybeDone()
       },
@@ -88,8 +88,7 @@ export default function ReviewSessionClient({
         maybeDone()
       },
       (err) => {
-        console.error('ReviewSessionClient: session listen failed', err)
-        setError('Failed to load session.')
+        setError(userFacingError(err, 'This session couldn\'t be loaded.'))
         sessionOk = true
         maybeDone()
       },

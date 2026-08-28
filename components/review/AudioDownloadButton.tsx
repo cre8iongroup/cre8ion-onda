@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { getDownloadURL, ref } from 'firebase/storage'
 import { getClientStorage } from '@/lib/firebase/client'
+import { userFacingError } from '@/lib/review/userFacingError'
 
 type Props = {
   audioStoragePath: string | undefined
@@ -32,8 +33,7 @@ export default function AudioDownloadButton({ audioStoragePath, sessionLabel }: 
       anchor.click()
       anchor.remove()
     } catch (err: unknown) {
-      console.error('AudioDownloadButton: download failed', err)
-      setError(err instanceof Error ? err.message : 'Download failed.')
+      setError(userFacingError(err, 'The audio file couldn\'t be downloaded right now.'))
     } finally {
       setBusy(false)
     }

@@ -12,6 +12,7 @@ import {
   reviewStatusLabel,
 } from '@/lib/review/reviewState'
 import { normalizeReviewState } from '@/lib/review/sessionReview'
+import { userFacingError } from '@/lib/review/userFacingError'
 import type { ReviewState, ReviewStatus, SessionDoc } from '@/types'
 import ReviewStatusBadge from './ReviewStatusBadge'
 
@@ -52,8 +53,12 @@ export default function ReviewStatusControls({
       })
       onUpdated?.()
     } catch (err: unknown) {
-      console.error('ReviewStatusControls: update failed', err)
-      setError(err instanceof Error ? err.message : 'Failed to update status.')
+      setError(
+        userFacingError(
+          err,
+          'There was a problem updating this session\'s status. Please try again.',
+        ),
+      )
     } finally {
       setBusy(null)
     }

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { parseAiSummary } from '@/lib/review/parseAiSummary'
+import { userFacingError } from '@/lib/review/userFacingError'
 import type { SessionDoc, TranscriptChunk, WithId } from '@/types'
 
 type Props = {
@@ -56,8 +57,7 @@ export default function SessionPdfExport({
       anchor.remove()
       URL.revokeObjectURL(url)
     } catch (err: unknown) {
-      console.error('SessionPdfExport: failed', err)
-      setError(err instanceof Error ? err.message : 'PDF export failed.')
+      setError(userFacingError(err, 'The PDF couldn\'t be generated right now.'))
     } finally {
       setBusy(false)
     }

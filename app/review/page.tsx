@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore'
 import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
+import { userFacingError } from '@/lib/review/userFacingError'
 import type { ShowDoc, WithId } from '@/types'
 
 function formatDateRange(start?: Timestamp, end?: Timestamp): string {
@@ -47,8 +48,7 @@ export default function ReviewShowsPage() {
           setLoading(false)
         },
         (err) => {
-          console.error('ReviewShowsPage: failed to load shows', err)
-          setError(err.message || 'Failed to load shows.')
+          setError(userFacingError(err, 'These shows couldn\'t be loaded.'))
           setLoading(false)
         },
       )
@@ -86,8 +86,7 @@ export default function ReviewShowsPage() {
           syncShows()
         },
         (err) => {
-          console.error('ReviewShowsPage: failed to load assigned show', showId, err)
-          setError(err.message || 'Failed to load assigned shows.')
+          setError(userFacingError(err, 'These shows couldn\'t be loaded.'))
           setLoading(false)
         },
       )

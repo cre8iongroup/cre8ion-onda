@@ -7,10 +7,14 @@ import { setCookie } from '@/lib/utils/cookies'
 import { useAuthContext } from '@/context/AuthContext'
 
 function LoginForm() {
-  const { user, loading, error, signIn } = useAuthContext()
+  const { user, userDoc, loading, error, signIn } = useAuthContext()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const returnTo = searchParams.get('from') || '/admin'
+  const fromParam = searchParams.get('from')
+
+  const defaultReturn =
+    userDoc?.baseRole === 'reviewer' ? '/review' : '/admin'
+  const returnTo = fromParam || defaultReturn
 
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
@@ -18,10 +22,12 @@ function LoginForm() {
   const [localError, setLocalError] = useState('')
 
   useEffect(() => {
-    if (!loading && user) {
-      router.replace(returnTo)
-    }
-  }, [user, loading, router, returnTo])
+    if (loading) return
+    if (!user) return
+    // Wait for userDoc so reviewer default landing resolves correctly.
+    if (!userDoc) return
+    router.replace(returnTo)
+  }, [user, userDoc, loading, router, returnTo])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -31,7 +37,7 @@ function LoginForm() {
     try {
       await signIn(email, password)
       setCookie('onda-session', '1', 7)
-      router.replace(returnTo)
+      // Redirect happens in useEffect once userDoc resolves (reviewer → /review).
     } catch (err: any) {
       setLocalError(err.message || 'Sign-in failed.')
     } finally {

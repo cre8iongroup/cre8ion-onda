@@ -132,6 +132,13 @@ export default function CreateUserModal({
       return
     }
 
+    if (values.baseRole === 'reviewer' && assignedShows.length === 0) {
+      setError('root', {
+        message: 'Reviewers must be assigned to at least one show.',
+      })
+      return
+    }
+
     const tempPassword = generateTempPassword()
     let authToken: string | null = null
 
@@ -258,7 +265,9 @@ export default function CreateUserModal({
           <div className="field">
             <span className="label">Assigned shows</span>
             <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
-              Leave empty for all shows (typical for admins).
+              {baseRole === 'reviewer'
+                ? 'Required — reviewers only see sessions from assigned shows.'
+                : 'Leave empty for all shows (typical for admins).'}
             </p>
             {shows.length === 0 ? (
               <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No shows yet.</p>

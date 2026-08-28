@@ -1,6 +1,6 @@
 import * as functions from 'firebase-functions/v1'
 import * as admin from 'firebase-admin'
-import { runSummarizeForSession } from './lib/runSummarizeForSession'
+import { runSummarizeForSession } from './shared/runSummarizeForSession'
 
 if (!admin.apps.length) admin.initializeApp()
 const db = admin.database()

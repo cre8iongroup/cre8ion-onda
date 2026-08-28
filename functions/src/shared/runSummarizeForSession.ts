@@ -26,8 +26,14 @@ Rules:
 - actionItems: concrete follow-ups or calls to action mentioned (may be empty array)
 - quotes: 2-5 notable quotes, verbatim or near-verbatim from the transcript
 - Speaker labels may be present as "Speaker 1:", "Speaker 2:", etc. — use them if helpful
-- Output ONLY valid JSON — no markdown fences, no preamble
+- Respond with raw JSON only: start with { and end with }. No markdown, no code fences, no \`\`\`json blocks, no preamble or commentary
 `
+
+function stripCodeFence(raw: string): string {
+  const trimmed = raw.trim()
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/)
+  return fenceMatch ? fenceMatch[1].trim() : trimmed
+}
 
 interface ClaudeSummaryOutput {
   executiveSummary: string
@@ -137,7 +143,7 @@ export async function runSummarizeForSession(
 
     let summary: ClaudeSummaryOutput
     try {
-      summary = JSON.parse(rawContent.text)
+      summary = JSON.parse(stripCodeFence(rawContent.text))
     } catch {
       functions.logger.error('runSummarizeForSession: failed to parse Claude JSON', {
         showId,

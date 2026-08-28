@@ -102,3 +102,7 @@ export function sessionPublicUrl(sessionId: string): string {
 export function showPublicUrl(slug: string): string {
   return `${getPublicAppOrigin()}/show/${slug}`
 }
+
+export function summaryPublicUrl(showId: string, sessionId: string): string {
+  return `${getPublicAppOrigin()}/summary/${showId}/${sessionId}`
+}

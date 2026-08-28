@@ -93,14 +93,26 @@ export default function AiSummaryGenerateControls({
         {variant === 'default' ? (
           <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-2)' }}>AI summary</h3>
         ) : null}
-        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-          Not enough transcript content to generate a summary yet
-          {eligibility.chunkCount === 0
-            ? ' — no transcript chunks are stored for this session.'
-            : ` (${eligibility.charCount} characters; minimum is 200).`}
-        </p>
-        <p className="text-sm" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
-          Expand the source content section below if you need to diagnose missing transcript data.
+        <p className="text-sm" style={{ color: 'var(--color-text-muted)', lineHeight: 1.65 }}>
+          This session couldn&apos;t be summarized — there isn&apos;t enough transcript content to
+          work with, which usually means something went wrong during recording or transcription.{' '}
+          <a
+            href="#review-session-diagnostics"
+            className="text-sm"
+            style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}
+            onClick={(e) => {
+              e.preventDefault()
+              const el = document.getElementById('review-session-diagnostics')
+              if (el instanceof HTMLDetailsElement) {
+                el.open = true
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            }}
+          >
+            Check the diagnostics below
+          </a>{' '}
+          to see what&apos;s missing, or reach out to the Tech team if you&apos;re not sure how to
+          proceed.
         </p>
       </>
     )

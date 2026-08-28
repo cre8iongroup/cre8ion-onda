@@ -302,7 +302,7 @@ export interface SessionDoc {
   aiSummaryGeneratedAt?: Timestamp
   /**
    * Who triggered the last summary generation — Firebase Auth uid, or a system
-   * marker such as `system:auto-migration` for post-migration auto-runs.
+   * marker such as `system:auto-migration` or `system:backfill`.
    */
   aiSummaryTriggeredBy?: string
   /** Public download URL for the session QR (PNG preferred when both exist). */

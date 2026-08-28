@@ -202,7 +202,7 @@ export default function ReviewSessionClient({
           publicSummaryUrl={publicSummaryUrl}
         />
 
-        <details style={{ marginTop: 'var(--space-2)' }}>
+        <details id="review-session-diagnostics" style={{ marginTop: 'var(--space-2)' }}>
           <summary
             className="text-sm"
             style={{

@@ -46,7 +46,7 @@ export type RunSummarizeOptions = {
   triggeredBy: string
   customInstructions?: string
   skipIfInsufficientContent?: boolean
-  source?: 'callable' | 'auto-migration'
+  source?: 'callable' | 'auto-migration' | 'backfill'
 }
 
 export type RunSummarizeFailureReason =
@@ -56,8 +56,13 @@ export type RunSummarizeFailureReason =
   | 'parse_error'
   | 'missing_api_key'
 
+export type RunSummarizeUsage = {
+  inputTokens: number
+  outputTokens: number
+}
+
 export type RunSummarizeResult =
-  | { ok: true; chunkCount: number; charCount: number }
+  | { ok: true; chunkCount: number; charCount: number; usage?: RunSummarizeUsage }
   | { ok: false; reason: RunSummarizeFailureReason }
 
 function buildUserMessage(fullTranscript: string, customInstructions?: string): string {
@@ -178,9 +183,21 @@ export async function runSummarizeForSession(
       sessionId,
       chunkCount,
       charCount,
+      inputTokens: response.usage?.input_tokens,
+      outputTokens: response.usage?.output_tokens,
     })
 
-    return { ok: true, chunkCount, charCount }
+    return {
+      ok: true,
+      chunkCount,
+      charCount,
+      usage: response.usage
+        ? {
+            inputTokens: response.usage.input_tokens,
+            outputTokens: response.usage.output_tokens,
+          }
+        : undefined,
+    }
   } catch (err) {
     functions.logger.error('runSummarizeForSession: Claude call failed', {
       showId,

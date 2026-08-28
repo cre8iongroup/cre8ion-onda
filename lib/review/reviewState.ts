@@ -64,11 +64,12 @@ export function applyReviewStatus(
     changedBy,
     changedAt: at,
   }
+  const resolvedNotes = notes !== undefined ? notes : prev.notes
   return {
     status: nextStatus,
     statusChangedBy: changedBy,
     statusChangedAt: at,
-    notes: notes !== undefined ? notes : prev.notes,
+    ...(typeof resolvedNotes === 'string' ? { notes: resolvedNotes } : {}),
     history: [...(prev.history ?? []), entry],
   }
 }

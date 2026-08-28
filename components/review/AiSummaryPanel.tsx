@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { formatSummaryPlainText, parseAiSummary } from '@/lib/review/parseAiSummary'
 import AiSummaryGenerateControls from '@/components/review/AiSummaryGenerateControls'
 import SessionPdfExport from '@/components/review/SessionPdfExport'
-import type { ReviewState, SessionDoc, TranscriptChunk, WithId } from '@/types'
+import type { EffectiveBranding, ReviewState, SessionDoc, TranscriptChunk, WithId } from '@/types'
 
 type Props = {
   showId: string
@@ -16,7 +16,7 @@ type Props = {
   canGenerate: boolean
   showName: string
   scheduledLabel: string | null
-  primaryColor?: string
+  pdfBranding: Pick<EffectiveBranding, 'logoUrl' | 'accentColors'>
   publicSummaryUrl: string | null
 }
 
@@ -106,7 +106,7 @@ export default function AiSummaryPanel({
   canGenerate,
   showName,
   scheduledLabel,
-  primaryColor,
+  pdfBranding,
   publicSummaryUrl,
 }: Props) {
   const [copiedSummary, setCopiedSummary] = useState(false)
@@ -146,9 +146,9 @@ export default function AiSummaryPanel({
       <SessionPdfExport
         showName={showName}
         session={session}
-        chunks={chunks}
         scheduledLabel={scheduledLabel}
-        primaryColor={primaryColor}
+        logoUrl={pdfBranding.logoUrl}
+        accentColor={pdfBranding.accentColors[0]}
         variant="inline"
       />
       {publicSummaryUrl ? (

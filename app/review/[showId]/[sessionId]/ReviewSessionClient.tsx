@@ -13,6 +13,7 @@ import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
 import { summaryPublicUrl } from '@/lib/attendee/urls'
 import { formatSessionDateTime } from '@/lib/attendee/schedule'
+import { mapShowBranding } from '@/lib/branding'
 import { sessionStatusBadgeClass, sessionStatusLabel } from '@/lib/sessionStatus'
 import { isSessionPublished } from '@/lib/review/reviewState'
 import { normalizeReviewState } from '@/lib/review/sessionReview'
@@ -197,7 +198,7 @@ export default function ReviewSessionClient({
           canGenerate={Boolean(capabilities?.canApproveTranscripts)}
           showName={show.name}
           scheduledLabel={startMs > 0 ? formatSessionDateTime(startMs, tz) : null}
-          primaryColor={show.branding?.primaryColor}
+          pdfBranding={mapShowBranding(show.branding)}
           publicSummaryUrl={publicSummaryUrl}
         />
 

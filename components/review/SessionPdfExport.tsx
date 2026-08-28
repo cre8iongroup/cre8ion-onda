@@ -1,12 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { pdf } from '@react-pdf/renderer'
 import { parseAiSummary } from '@/lib/review/parseAiSummary'
-import {
-  SessionPdfDocument,
-  buildTranscriptLines,
-} from '@/components/review/SessionPdfDocument'
 import type { SessionDoc, TranscriptChunk, WithId } from '@/types'
 
 type Props = {
@@ -31,6 +26,11 @@ export default function SessionPdfExport({
     setBusy(true)
     setError(null)
     try {
+      const [{ pdf }, { SessionPdfDocument, buildTranscriptLines }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('@/components/review/SessionPdfDocument'),
+      ])
+
       const parsed = parseAiSummary(session.aiSummary)
       const summary = parsed.ok ? parsed.summary : null
       const transcriptLines = buildTranscriptLines(chunks)

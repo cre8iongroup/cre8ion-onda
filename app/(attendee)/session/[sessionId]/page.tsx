@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { loadPublicSessionById } from '@/lib/attendee/load'
+import { hasPublishedSummary } from '@/lib/summary/load'
+import { summaryPublicUrl } from '@/lib/attendee/urls'
 import { attendeePageMetadata } from '@/lib/attendee/shareMeta'
 import LiveCaptionFeed from './LiveCaptionFeed'
 import '@/app/(attendee)/attendee.css'
@@ -36,6 +38,14 @@ export default async function SessionPage({
 
   const { session, show, branding, room } = result
 
+  let publishedSummaryHref: string | null = null
+  if (session.feedState === 'ended') {
+    const published = await hasPublishedSummary(session.showId, session.id)
+    if (published) {
+      publishedSummaryHref = summaryPublicUrl(session.showId, session.id)
+    }
+  }
+
   return (
     <LiveCaptionFeed
       sessionId={session.id}
@@ -48,6 +58,7 @@ export default async function SessionPage({
       branding={branding}
       initialFeedState={session.feedState}
       defaultLanguages={show.defaultLanguages}
+      publishedSummaryHref={publishedSummaryHref}
     />
   )
 }

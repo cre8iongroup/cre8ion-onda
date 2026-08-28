@@ -80,6 +80,7 @@ export default function LiveCaptionFeed({
   branding,
   initialFeedState,
   defaultLanguages,
+  publishedSummaryHref = null,
 }: {
   sessionId: string
   title: string
@@ -91,6 +92,8 @@ export default function LiveCaptionFeed({
   branding: EffectiveBranding
   initialFeedState: FeedState
   defaultLanguages?: string[]
+  /** When session ended — link to public notes if published; else omitted for "coming soon". */
+  publishedSummaryHref?: string | null
 }) {
   const availableLanguages = useMemo(
     () => normalizeCaptionLanguages(defaultLanguages),
@@ -311,6 +314,17 @@ export default function LiveCaptionFeed({
                 <p className="caption-waiting-time">Scheduled for {scheduledLabel}</p>
               ) : null}
               <p className="caption-waiting-body">{waiting.body}</p>
+              {feedState === 'ended' ? (
+                publishedSummaryHref ? (
+                  <p className="caption-waiting-body" style={{ marginTop: '0.75rem' }}>
+                    <Link href={publishedSummaryHref}>View session notes</Link>
+                  </p>
+                ) : (
+                  <p className="caption-waiting-body" style={{ marginTop: '0.75rem', opacity: 0.85 }}>
+                    Notes coming soon.
+                  </p>
+                )
+              ) : null}
             </div>
           )}
         </section>

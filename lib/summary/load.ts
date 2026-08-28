@@ -49,6 +49,12 @@ function sessionIsPubliclyPublished(data: SessionDoc): boolean {
   return true
 }
 
+/** Same gate as loadPublishedSummary — status, consent, and parseable aiSummary. */
+function sessionHasPublicSummaryContent(data: SessionDoc): boolean {
+  if (!sessionIsPubliclyPublished(data)) return false
+  return parseAiSummary(data.aiSummary).ok
+}
+
 /** Lightweight boolean for live session ended CTA — no summary body. */
 export async function hasPublishedSummary(
   showId: string,
@@ -57,7 +63,7 @@ export async function hasPublishedSummary(
   const fs = getAdminFirestore()
   const snap = await fs.doc(`shows/${showId}/sessions/${sessionId}`).get()
   if (!snap.exists) return false
-  return sessionIsPubliclyPublished(snap.data() as SessionDoc)
+  return sessionHasPublicSummaryContent(snap.data() as SessionDoc)
 }
 
 export async function loadPublishedSummary(
@@ -69,7 +75,7 @@ export async function loadPublishedSummary(
   if (!sessionSnap.exists) return null
 
   const sessionData = sessionSnap.data() as SessionDoc
-  if (!sessionIsPubliclyPublished(sessionData)) return null
+  if (!sessionHasPublicSummaryContent(sessionData)) return null
 
   const parsed = parseAiSummary(sessionData.aiSummary)
   if (!parsed.ok) return null

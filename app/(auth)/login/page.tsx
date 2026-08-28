@@ -7,7 +7,7 @@ import { setCookie } from '@/lib/utils/cookies'
 import { useAuthContext } from '@/context/AuthContext'
 
 function LoginForm() {
-  const { user, userDoc, loading, error, signIn } = useAuthContext()
+  const { user, userDoc, loading, error, signIn, signOut } = useAuthContext()
   const router = useRouter()
   const searchParams = useSearchParams()
   const fromParam = searchParams.get('from')
@@ -24,10 +24,14 @@ function LoginForm() {
   useEffect(() => {
     if (loading) return
     if (!user) return
-    // Wait for userDoc so reviewer default landing resolves correctly.
     if (!userDoc) return
     router.replace(returnTo)
   }, [user, userDoc, loading, router, returnTo])
+
+  async function handleSignOut() {
+    await signOut()
+    document.cookie = 'onda-session=; Max-Age=0; path=/'
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -49,6 +53,28 @@ function LoginForm() {
     return (
       <div className="auth-shell">
         <span className="spinner" aria-label="Loading" />
+      </div>
+    )
+  }
+
+  if (user && !userDoc) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <div className="auth-logo">〜 cre8ion Onda</div>
+          <div className="alert alert-error" role="alert" style={{ marginBottom: 'var(--space-4)' }}>
+            Account setup incomplete — your sign-in succeeded but no user profile was found in
+            Firestore. Contact your administrator or try again after your account has been
+            provisioned.
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary w-full"
+            onClick={() => void handleSignOut()}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     )
   }

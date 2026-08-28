@@ -50,8 +50,8 @@ service cloud.firestore {
     function sessionPublishConsentOk() {
       return !('reviewState' in request.resource.data)
         || request.resource.data.reviewState.status != 'published'
-        || !('aiNotesConsent' in resource.data)
-        || resource.data.aiNotesConsent == true;
+        || !('aiNotesConsent' in request.resource.data)
+        || request.resource.data.aiNotesConsent != false;
     }
 
     function isTech() {

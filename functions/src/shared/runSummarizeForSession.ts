@@ -3,7 +3,10 @@ import * as functions from 'firebase-functions/v1'
 import Anthropic from '@anthropic-ai/sdk'
 import { computeTranscriptStats } from './transcriptStats'
 
-const firestore = admin.firestore()
+/** Lazy — safe when imported before admin.initializeApp() (standalone scripts). */
+function getFirestore(): admin.firestore.Firestore {
+  return admin.firestore()
+}
 
 /** Keep in sync with lib/review/transcriptSummarize.ts */
 export const MIN_TRANSCRIPT_CHARS = 200
@@ -86,7 +89,7 @@ export async function runSummarizeForSession(
     return { ok: false, reason: 'missing_api_key' }
   }
 
-  const transcriptsSnap = await firestore
+  const transcriptsSnap = await getFirestore()
     .collection(`shows/${showId}/sessions/${sessionId}/transcripts`)
     .orderBy('sequenceNumber', 'asc')
     .get()
@@ -158,14 +161,14 @@ export async function runSummarizeForSession(
       return { ok: false, reason: 'parse_error' }
     }
 
-    const sessionRef = firestore.doc(`shows/${showId}/sessions/${sessionId}`)
+    const sessionRef = getFirestore().doc(`shows/${showId}/sessions/${sessionId}`)
     await sessionRef.update({
       aiSummary: JSON.stringify(summary),
       aiSummaryGeneratedAt: admin.firestore.FieldValue.serverTimestamp(),
       aiSummaryTriggeredBy: options.triggeredBy,
     })
 
-    await firestore.collection('auditLog').add({
+    await getFirestore().collection('auditLog').add({
       action: 'SUMMARY_TRIGGERED',
       performedBy: options.triggeredBy,
       performedAt: admin.firestore.FieldValue.serverTimestamp(),

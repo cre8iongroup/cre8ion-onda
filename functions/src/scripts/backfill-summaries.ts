@@ -5,24 +5,24 @@
  *
  * Usage (from repo root):
  *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/cre8ion-onda-sa.json \
- *   ANTHROPIC_API_KEY=sk-... \
+ *   NEXT_PUBLIC_FIREBASE_PROJECT_ID=cre8ion-onda \
+ *   NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://cre8ion-onda-default-rtdb.firebaseio.com \
  *   npx tsx functions/src/scripts/backfill-summaries.ts
  *
  * Real run (explicit flag required):
- *   ... npx tsx functions/src/scripts/backfill-summaries.ts --execute
+ *   ... ANTHROPIC_API_KEY=sk-... \
+ *   npx tsx functions/src/scripts/backfill-summaries.ts --execute
  *
  * Optional:
  *   --concurrency=2   (default 2, max 5)
  */
 
-import * as admin from 'firebase-admin'
+import type { Firestore } from 'firebase-admin/firestore'
+import { getAdminFirestore } from '../../../lib/firebase/admin'
 import { parseAiSummary } from '../../../lib/review/parseAiSummary'
+import { MIN_TRANSCRIPT_CHARS } from '../../../lib/review/transcriptSummarize'
 import { isAvTestSession } from '../../../lib/sessions/sessionFilters'
-import {
-  MIN_TRANSCRIPT_CHARS,
-  runSummarizeForSession,
-  type RunSummarizeFailureReason,
-} from '../shared/runSummarizeForSession'
+import type { RunSummarizeFailureReason } from '../shared/runSummarizeForSession'
 import { computeTranscriptStats } from '../shared/transcriptStats'
 
 /** claude-opus-4-5 list pricing (USD per million tokens) — update if model/pricing changes */
@@ -67,7 +67,7 @@ function passesSessionFilters(data: SessionDocLike): boolean {
   return true
 }
 
-async function loadEligibleSessions(firestore: admin.firestore.Firestore): Promise<SessionRow[]> {
+async function loadEligibleSessions(firestore: Firestore): Promise<SessionRow[]> {
   const eligible: SessionRow[] = []
   const showsSnap = await firestore.collection('shows').get()
 
@@ -139,10 +139,7 @@ function failureLabel(reason: RunSummarizeFailureReason): string {
 async function main() {
   const { execute, concurrency } = parseArgs(process.argv.slice(2))
 
-  if (!admin.apps.length) {
-    admin.initializeApp()
-  }
-  const firestore = admin.firestore()
+  const firestore = getAdminFirestore()
 
   console.log('=== Summary backfill ===')
   console.log(`Mode: ${execute ? 'EXECUTE (Claude calls + Firestore writes)' : 'DRY RUN (read-only)'}`)
@@ -188,6 +185,8 @@ async function main() {
   let failed = 0
   let totalInputTokens = 0
   let totalOutputTokens = 0
+
+  const { runSummarizeForSession } = await import('../shared/runSummarizeForSession')
 
   await runWithConcurrency(eligible, concurrency, async (row) => {
     const result = await runSummarizeForSession(row.showId, row.sessionId, {

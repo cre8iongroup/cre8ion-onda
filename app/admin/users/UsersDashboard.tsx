@@ -11,6 +11,7 @@ import { getClientFirestore } from '@/lib/firebase/client'
 import { useAuthContext } from '@/context/AuthContext'
 import type { ShowDoc, UserDoc, WithId } from '@/types'
 import CreateUserModal from './CreateUserModal'
+import EditUserModal from './EditUserModal'
 
 export default function UsersDashboard() {
   const { user, userDoc, capabilities } = useAuthContext()
@@ -19,6 +20,7 @@ export default function UsersDashboard() {
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editUser, setEditUser] = useState<WithId<UserDoc> | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
   const [createdPassword, setCreatedPassword] = useState<string | null>(null)
 
@@ -181,6 +183,7 @@ export default function UsersDashboard() {
                 <th>Role</th>
                 <th>Assigned shows</th>
                 <th>Overrides</th>
+                <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
@@ -204,6 +207,16 @@ export default function UsersDashboard() {
                     <td className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                       {overrideCount === 0 ? '—' : `${overrideCount} custom`}
                     </td>
+                    <td>
+                      <button
+                        type="button"
+                        id={`btn-edit-user-${u.id}`}
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setEditUser(u)}
+                      >
+                        Edit
+                      </button>
+                    </td>
                   </tr>
                 )
               })}
@@ -222,6 +235,15 @@ export default function UsersDashboard() {
           setFlash('User created.')
           setCreatedPassword(tempPassword)
         }}
+      />
+
+      <EditUserModal
+        open={editUser !== null}
+        onClose={() => setEditUser(null)}
+        user={editUser}
+        shows={shows}
+        canManage={canManage && isAdminRole}
+        onSaved={() => setFlash('User updated.')}
       />
     </div>
   )

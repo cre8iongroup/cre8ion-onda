@@ -7,10 +7,14 @@ import { setCookie } from '@/lib/utils/cookies'
 import { useAuthContext } from '@/context/AuthContext'
 
 function LoginForm() {
-  const { user, loading, error, signIn } = useAuthContext()
+  const { user, userDoc, loading, error, signIn, signOut } = useAuthContext()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const returnTo = searchParams.get('from') || '/admin'
+  const fromParam = searchParams.get('from')
+
+  const defaultReturn =
+    userDoc?.baseRole === 'reviewer' ? '/review' : '/admin'
+  const returnTo = fromParam || defaultReturn
 
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
@@ -18,10 +22,16 @@ function LoginForm() {
   const [localError, setLocalError] = useState('')
 
   useEffect(() => {
-    if (!loading && user) {
-      router.replace(returnTo)
-    }
-  }, [user, loading, router, returnTo])
+    if (loading) return
+    if (!user) return
+    if (!userDoc) return
+    router.replace(returnTo)
+  }, [user, userDoc, loading, router, returnTo])
+
+  async function handleSignOut() {
+    await signOut()
+    document.cookie = 'onda-session=; Max-Age=0; path=/'
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -31,7 +41,7 @@ function LoginForm() {
     try {
       await signIn(email, password)
       setCookie('onda-session', '1', 7)
-      router.replace(returnTo)
+      // Redirect happens in useEffect once userDoc resolves (reviewer → /review).
     } catch (err: any) {
       setLocalError(err.message || 'Sign-in failed.')
     } finally {
@@ -43,6 +53,28 @@ function LoginForm() {
     return (
       <div className="auth-shell">
         <span className="spinner" aria-label="Loading" />
+      </div>
+    )
+  }
+
+  if (user && !userDoc) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <div className="auth-logo">〜 cre8ion Onda</div>
+          <div className="alert alert-error" role="alert" style={{ marginBottom: 'var(--space-4)' }}>
+            Account setup incomplete — your sign-in succeeded but no user profile was found in
+            Firestore. Contact your administrator or try again after your account has been
+            provisioned.
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary w-full"
+            onClick={() => void handleSignOut()}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     )
   }

@@ -84,7 +84,13 @@ async function main() {
     languages: ['en'],
     isDraft: false,
     feedState: 'standby',
-    approvalState: {},
+    reviewState: {
+      status: 'needs_review',
+      statusChangedBy: 'seed-phase5',
+      statusChangedAt: FieldValue.serverTimestamp(),
+      history: [],
+    },
+    aiNotesConsent: true,
     createdAt: FieldValue.serverTimestamp(),
     createdBy: 'seed-phase5',
   })

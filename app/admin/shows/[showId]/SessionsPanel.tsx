@@ -10,6 +10,9 @@ import {
   sessionStatusLabel,
 } from '@/lib/sessionStatus'
 import { resolveRoomName, sortRoomsByName } from '@/lib/rooms'
+import { sortSessionsByScheduledStart, type TimeSort } from '@/lib/sessions/sessionFilters'
+import { useSessionFilters } from '@/hooks/useSessionFilters'
+import SessionFilterBar from '@/components/sessions/SessionFilterBar'
 
 function formatDateTime(ts?: Timestamp): string {
   if (!ts) return '—'
@@ -20,45 +23,6 @@ function formatDateTime(ts?: Timestamp): string {
     minute: '2-digit',
   })
 }
-
-function dateKey(ts?: Timestamp): string | null {
-  if (!ts) return null
-  const d = ts.toDate()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function formatDateLabel(key: string): string {
-  const [y, m, d] = key.split('-').map(Number)
-  const date = new Date(y, m - 1, d)
-  return date.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
-
-/** Coarse time-of-day buckets for quick filtering. */
-type TimeBucket = 'morning' | 'afternoon' | 'evening'
-
-function timeBucket(ts?: Timestamp): TimeBucket | null {
-  if (!ts) return null
-  const hour = ts.toDate().getHours()
-  if (hour < 12) return 'morning'
-  if (hour < 17) return 'afternoon'
-  return 'evening'
-}
-
-const TIME_BUCKET_LABELS: Record<TimeBucket, string> = {
-  morning: 'Morning (before 12)',
-  afternoon: 'Afternoon (12–5)',
-  evening: 'Evening (5+)',
-}
-
-type TimeSort = 'asc' | 'desc'
 
 export default function SessionsPanel({
   showId,
@@ -81,57 +45,34 @@ export default function SessionsPanel({
   onToggleDraft: (session: WithId<SessionDoc>) => void
   onResetSession: (session: WithId<SessionDoc>) => void
 }) {
-  const [search, setSearch] = useState('')
-  const [roomFilter, setRoomFilter] = useState('')
-  const [dateFilter, setDateFilter] = useState('')
-  const [timeFilter, setTimeFilter] = useState<'' | TimeBucket>('')
   const [timeSort, setTimeSort] = useState<TimeSort>('asc')
+  const {
+    search,
+    setSearch,
+    roomId,
+    setRoomId,
+    dateKey,
+    setDateKey,
+    timeBucket,
+    setTimeBucket,
+    dateOptions,
+    filteredSessions,
+    filtersActive,
+    clearFilters,
+  } = useSessionFilters(sessions)
 
   const sortedRooms = useMemo(() => sortRoomsByName(rooms), [rooms])
 
-  const dateOptions = useMemo(() => {
-    const keys = new Set<string>()
-    for (const s of sessions) {
-      const k = dateKey(s.scheduledStart)
-      if (k) keys.add(k)
-    }
-    return [...keys].sort()
-  }, [sessions])
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return sessions.filter((s) => {
-      if (roomFilter && s.roomId !== roomFilter) return false
-      if (dateFilter) {
-        const k = dateKey(s.scheduledStart)
-        if (k !== dateFilter) return false
-      }
-      if (timeFilter) {
-        if (timeBucket(s.scheduledStart) !== timeFilter) return false
-      }
-      if (q) {
-        const title = (s.title || '').toLowerCase()
-        const friendly = (s.friendlyName || '').toLowerCase()
-        if (!title.includes(q) && !friendly.includes(q)) return false
-      }
-      return true
-    })
-  }, [sessions, search, roomFilter, dateFilter, timeFilter])
-
   const grouped = useMemo(() => {
     const byRoom = new Map<string, WithId<SessionDoc>[]>()
-    for (const s of filtered) {
+    for (const s of filteredSessions) {
       const id = s.roomId || '__unknown__'
       const list = byRoom.get(id)
       if (list) list.push(s)
       else byRoom.set(id, [s])
     }
-    for (const list of byRoom.values()) {
-      list.sort((a, b) => {
-        const aMs = a.scheduledStart?.toMillis?.() ?? 0
-        const bMs = b.scheduledStart?.toMillis?.() ?? 0
-        return timeSort === 'asc' ? aMs - bMs : bMs - aMs
-      })
+    for (const [id, list] of byRoom.entries()) {
+      byRoom.set(id, sortSessionsByScheduledStart(list, timeSort))
     }
 
     const roomOrder = sortedRooms.map((r) => r.id)
@@ -151,10 +92,9 @@ export default function SessionsPanel({
           : resolveRoomName(rooms, roomId) || 'Unknown room',
       sessions: byRoom.get(roomId) ?? [],
     }))
-  }, [filtered, sortedRooms, rooms, timeSort])
+  }, [filteredSessions, sortedRooms, rooms, timeSort])
 
   const hasRooms = rooms.length > 0
-  const filtersActive = Boolean(search.trim() || roomFilter || dateFilter || timeFilter)
 
   if (loading) {
     return (
@@ -182,115 +122,26 @@ export default function SessionsPanel({
 
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-      <div
-        className="card"
-        style={{
-          padding: 'var(--space-3)',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 'var(--space-2)',
-          alignItems: 'flex-end',
-        }}
-      >
-        <div className="field" style={{ margin: 0, flex: '1 1 12rem', minWidth: 0 }}>
-          <label className="label" htmlFor="sessions-search">
-            Search
-          </label>
-          <input
-            id="sessions-search"
-            className="input"
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Session name…"
-          />
-        </div>
-        <div className="field" style={{ margin: 0, flex: '1 1 10rem', minWidth: 0 }}>
-          <label className="label" htmlFor="sessions-room-filter">
-            Room
-          </label>
-          <select
-            id="sessions-room-filter"
-            className="input"
-            value={roomFilter}
-            onChange={(e) => setRoomFilter(e.target.value)}
-          >
-            <option value="">All rooms</option>
-            {sortedRooms.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field" style={{ margin: 0, flex: '1 1 10rem', minWidth: 0 }}>
-          <label className="label" htmlFor="sessions-date-filter">
-            Date
-          </label>
-          <select
-            id="sessions-date-filter"
-            className="input"
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
-          >
-            <option value="">All dates</option>
-            {dateOptions.map((k) => (
-              <option key={k} value={k}>
-                {formatDateLabel(k)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field" style={{ margin: 0, flex: '1 1 10rem', minWidth: 0 }}>
-          <label className="label" htmlFor="sessions-time-filter">
-            Time
-          </label>
-          <select
-            id="sessions-time-filter"
-            className="input"
-            value={timeFilter}
-            onChange={(e) => setTimeFilter(e.target.value as '' | TimeBucket)}
-          >
-            <option value="">All times</option>
-            {(Object.keys(TIME_BUCKET_LABELS) as TimeBucket[]).map((b) => (
-              <option key={b} value={b}>
-                {TIME_BUCKET_LABELS[b]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field" style={{ margin: 0, flex: '0 1 9rem', minWidth: 0 }}>
-          <label className="label" htmlFor="sessions-time-sort">
-            Sort within room
-          </label>
-          <select
-            id="sessions-time-sort"
-            className="input"
-            value={timeSort}
-            onChange={(e) => setTimeSort(e.target.value as TimeSort)}
-          >
-            <option value="asc">Earliest first</option>
-            <option value="desc">Latest first</option>
-          </select>
-        </div>
-        {filtersActive ? (
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              setSearch('')
-              setRoomFilter('')
-              setDateFilter('')
-              setTimeFilter('')
-            }}
-            style={{ alignSelf: 'flex-end' }}
-          >
-            Clear filters
-          </button>
-        ) : null}
-      </div>
+      <SessionFilterBar
+        idPrefix="sessions"
+        search={search}
+        onSearchChange={setSearch}
+        rooms={rooms}
+        roomId={roomId}
+        onRoomIdChange={setRoomId}
+        dateOptions={dateOptions}
+        dateKey={dateKey}
+        onDateKeyChange={setDateKey}
+        timeBucket={timeBucket}
+        onTimeBucketChange={setTimeBucket}
+        filtersActive={filtersActive}
+        onClearFilters={clearFilters}
+        showTimeSort
+        timeSort={timeSort}
+        onTimeSortChange={setTimeSort}
+      />
 
-      {filtered.length === 0 ? (
+      {filteredSessions.length === 0 ? (
         <div className="card" style={{ padding: 'var(--space-8)', textAlign: 'center' }}>
           <p className="text-sm" style={{ color: 'var(--color-text-muted)', margin: 0 }}>
             No sessions match the current filters.

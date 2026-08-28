@@ -168,7 +168,13 @@ export default function CreateSessionModal({
         languages: defaultLanguages.length ? defaultLanguages : ['en'],
         isDraft: true,
         feedState: 'standby',
-        approvalState: {},
+        reviewState: {
+          status: 'needs_review',
+          statusChangedBy: createdBy,
+          statusChangedAt: Timestamp.now(),
+          history: [],
+        },
+        aiNotesConsent: true,
         createdAt: Timestamp.now(),
         createdBy,
       }

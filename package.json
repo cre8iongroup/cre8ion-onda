@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
+    "@react-pdf/renderer": "^4.9.0",
     "date-fns": "^4.4.0",
     "firebase": "^12.15.0",
     "firebase-admin": "^14.0.0",

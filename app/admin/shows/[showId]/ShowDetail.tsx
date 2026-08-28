@@ -27,10 +27,11 @@ import TimezonePanel from './TimezonePanel'
 import LanguagesPanel from './LanguagesPanel'
 import GlossaryPanel from './GlossaryPanel'
 import QrCodesTab from './QrCodesTab'
+import ShowReviewAccessPanel from './ShowReviewAccessPanel'
 import { showPublicUrl } from '@/lib/attendee/urls'
 import { canHideSession } from '@/lib/sessionStatus'
 
-type ShowTab = 'overview' | 'glossary' | 'branding' | 'rooms' | 'sessions' | 'qr' | 'tech'
+type ShowTab = 'overview' | 'glossary' | 'branding' | 'rooms' | 'sessions' | 'review' | 'qr' | 'tech'
 
 function formatDateRange(start?: Timestamp, end?: Timestamp): string {
   if (!start || !end) return 'Dates TBD'
@@ -39,7 +40,7 @@ function formatDateRange(start?: Timestamp, end?: Timestamp): string {
 }
 
 export default function ShowDetail({ showId }: { showId: string }) {
-  const { user, capabilities } = useAuthContext()
+  const { user, userDoc, capabilities } = useAuthContext()
   const [show, setShow] = useState<WithId<ShowDoc> | null>(null)
   const [sessions, setSessions] = useState<WithId<SessionDoc>[]>([])
   const [loadingShow, setLoadingShow] = useState(true)
@@ -53,6 +54,8 @@ export default function ShowDetail({ showId }: { showId: string }) {
   const [activeTab, setActiveTab] = useState<ShowTab | null>(null)
 
   const canEditShows = Boolean(capabilities?.canEditShows || capabilities?.canCreateShows)
+  const canApproveTranscripts = Boolean(capabilities?.canApproveTranscripts)
+  const isAdminRole = userDoc?.baseRole === 'admin'
   const canManageBranding = Boolean(capabilities?.canManageBranding)
   const canDownloadQr = Boolean(capabilities?.canDownloadQr)
   const canManageTech = Boolean(capabilities?.canManageTech)
@@ -65,10 +68,13 @@ export default function ShowDetail({ showId }: { showId: string }) {
     if (canManageBranding) list.push({ id: 'branding', label: 'Branding' })
     if (canEditShows) list.push({ id: 'rooms', label: 'Rooms' })
     if (canEditShows) list.push({ id: 'sessions', label: 'Sessions' })
+    // Future gating point: add `&& show.notesEnabled` (or similar entitlement) here
+    // when a show-level notes toggle ships — no tab restructure needed.
+    if (canApproveTranscripts) list.push({ id: 'review', label: 'Review' })
     if (canDownloadQr) list.push({ id: 'qr', label: 'QR codes' })
     if (canManageTech) list.push({ id: 'tech', label: 'Tech' })
     return list
-  }, [canEditShows, canManageBranding, canDownloadQr, canManageTech])
+  }, [canEditShows, canApproveTranscripts, canManageBranding, canDownloadQr, canManageTech])
 
   useEffect(() => {
     if (tabs.length === 0) {
@@ -465,6 +471,17 @@ export default function ShowDetail({ showId }: { showId: string }) {
             resetBusyId={resetBusyId}
             onToggleDraft={toggleDraft}
             onResetSession={resetSession}
+          />
+        </section>
+      ) : null}
+
+      {activeTab === 'review' ? (
+        <section>
+          <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-4)' }}>Review</h2>
+          <ShowReviewAccessPanel
+            showId={show.id}
+            active={activeTab === 'review'}
+            isAdmin={isAdminRole}
           />
         </section>
       ) : null}

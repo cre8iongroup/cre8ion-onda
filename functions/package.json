@@ -14,7 +14,8 @@
     "shell": "npm run build && firebase functions:shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "backfill-summaries": "npx tsx src/scripts/backfill-summaries.ts"
+    "backfill-summaries": "npx tsx src/scripts/backfill-summaries.ts",
+    "session-diagnostic-report": "npx tsx src/scripts/session-diagnostic-report.ts"
   },
   "dependencies": {
     "deepl-node": "^1.13.0",

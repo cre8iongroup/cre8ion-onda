@@ -32,7 +32,7 @@ export default function ReviewSessionClient({
   showId: string
   sessionId: string
 }) {
-  const { user, userDoc } = useAuthContext()
+  const { user, userDoc, capabilities } = useAuthContext()
   const [show, setShow] = useState<ShowDoc | null>(null)
   const [session, setSession] = useState<WithId<SessionDoc> | null>(null)
   const [chunks, setChunks] = useState<WithId<TranscriptChunk>[]>([])
@@ -187,7 +187,15 @@ export default function ReviewSessionClient({
           userId={user?.uid ?? userDoc?.email ?? 'reviewer'}
           publicSummaryUrl={publicSummaryUrl}
         />
-        <AiSummaryPanel aiSummary={session.aiSummary} />
+        <AiSummaryPanel
+          showId={showId}
+          sessionId={sessionId}
+          session={session}
+          reviewState={reviewState}
+          aiSummary={session.aiSummary}
+          chunks={chunks}
+          canGenerate={Boolean(capabilities?.canApproveTranscripts)}
+        />
         <TranscriptPanel chunks={chunks} />
         <AudioDownloadButton
           audioStoragePath={session.audioStoragePath}

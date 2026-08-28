@@ -300,6 +300,10 @@ export interface SessionDoc {
   /** Structured Claude summary — stored as JSON.stringify(ClaudeSummary). */
   aiSummary?: string
   aiSummaryGeneratedAt?: Timestamp
+  /**
+   * Who triggered the last summary generation — Firebase Auth uid, or a system
+   * marker such as `system:auto-migration` for post-migration auto-runs.
+   */
   aiSummaryTriggeredBy?: string
   /** Public download URL for the session QR (PNG preferred when both exist). */
   qrCodeUrl?: string

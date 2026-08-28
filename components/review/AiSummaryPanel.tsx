@@ -1,33 +1,27 @@
 'use client'
 
 import { parseAiSummary } from '@/lib/review/parseAiSummary'
+import AiSummaryGenerateControls from '@/components/review/AiSummaryGenerateControls'
+import type { ReviewState, SessionDoc, TranscriptChunk, WithId } from '@/types'
 
 type Props = {
+  showId: string
+  sessionId: string
+  session: SessionDoc
+  reviewState: ReviewState
   aiSummary: string | undefined
+  chunks: WithId<TranscriptChunk>[]
+  canGenerate: boolean
 }
 
-export default function AiSummaryPanel({ aiSummary }: Props) {
+function AiSummaryDisplay({ aiSummary }: { aiSummary: string }) {
   const parsed = parseAiSummary(aiSummary)
-
-  if (!parsed.ok) {
-    return (
-      <div className="card" style={{ padding: 'var(--space-5)' }}>
-        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-2)' }}>AI summary</h3>
-        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-          {parsed.reason === 'missing'
-            ? 'No AI summary has been generated for this session yet.'
-            : 'Summary data is present but could not be parsed.'}
-        </p>
-      </div>
-    )
-  }
+  if (!parsed.ok) return null
 
   const { summary } = parsed
 
   return (
-    <div className="card" style={{ padding: 'var(--space-5)' }}>
-      <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-4)' }}>AI summary</h3>
-
+    <>
       <section style={{ marginBottom: 'var(--space-5)' }}>
         <h4 className="text-sm" style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>
           Executive summary
@@ -91,6 +85,36 @@ export default function AiSummaryPanel({ aiSummary }: Props) {
             ))}
           </div>
         </section>
+      ) : null}
+    </>
+  )
+}
+
+export default function AiSummaryPanel({
+  showId,
+  sessionId,
+  session,
+  reviewState,
+  aiSummary,
+  chunks,
+  canGenerate,
+}: Props) {
+  const parsed = parseAiSummary(aiSummary)
+
+  return (
+    <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+      <AiSummaryGenerateControls
+        showId={showId}
+        sessionId={sessionId}
+        reviewState={reviewState}
+        aiSummary={aiSummary}
+        chunks={chunks}
+        canGenerate={canGenerate}
+      />
+      {parsed.ok ? (
+        <div className="card" style={{ padding: 'var(--space-5)' }}>
+          <AiSummaryDisplay aiSummary={aiSummary!} />
+        </div>
       ) : null}
     </div>
   )

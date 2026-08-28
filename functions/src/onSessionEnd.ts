@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions/v1'
 import * as admin from 'firebase-admin'
+import { runSummarizeForSession } from './lib/runSummarizeForSession'
 
 if (!admin.apps.length) admin.initializeApp()
 const db = admin.database()
@@ -13,13 +14,14 @@ const firestore = admin.firestore()
  *   2. Resolves showId from RTDB liveSessions/{sessionId}.showId
  *   3. Writes all chunks to Firestore at shows/{showId}/sessions/{sessionId}/transcripts/
  *      ordered by sequenceNumber
- *   4. Sets session feedState to 'ended'
- *   5. Deletes the /liveSessions/{sessionId} RTDB node (cleanup)
- *      Note: does NOT touch outputLive/{roomId} — that tree is independent of session lifecycle.
- *   6. Writes an audit log entry
+ *   4. Auto-summarizes when transcript content is sufficient (best-effort)
+ *   5. Sets session feedState to 'ended'
+ *   6. Deletes the /liveSessions/{sessionId} RTDB node (cleanup)
+ *   7. Writes an audit log entry
  */
-export const onSessionEnd = functions.database
-  .ref('/liveSessions/{sessionId}/feedState')
+export const onSessionEnd = functions
+  .runWith({ timeoutSeconds: 300 })
+  .database.ref('/liveSessions/{sessionId}/feedState')
   .onWrite(async (change, context) => {
     const { sessionId } = context.params
     const newState = change.after.val()
@@ -29,7 +31,6 @@ export const onSessionEnd = functions.database
     functions.logger.info('onSessionEnd: session ended, migrating to Firestore', { sessionId })
 
     try {
-      // ── 1. Read all RTDB chunks
       const chunksSnap = await db.ref(`/liveSessions/${sessionId}/chunks`).get()
       const rawChunks = chunksSnap.val() as Record<string, any> | null
 
@@ -37,7 +38,6 @@ export const onSessionEnd = functions.database
         functions.logger.warn('onSessionEnd: no chunks found in RTDB', { sessionId })
       }
 
-      // ── 2. Resolve show via RTDB liveSessions.showId (not broken collectionGroup documentId)
       const liveSnap = await db.ref(`/liveSessions/${sessionId}`).get()
       const liveMeta = liveSnap.val() as { showId?: string } | null
       const showId =
@@ -60,13 +60,13 @@ export const onSessionEnd = functions.database
         return null
       }
 
-      // ── 3. Batch write chunks to Firestore transcripts subcollection
+      let migratedChunkCount = 0
+
       if (rawChunks) {
         const chunks = Object.values(rawChunks) as any[]
-        // Sort by sequenceNumber for deterministic ordering
         chunks.sort((a, b) => (a.sequenceNumber ?? 0) - (b.sequenceNumber ?? 0))
+        migratedChunkCount = chunks.length
 
-        // Firestore batch limit is 500 — chunk writes if needed
         const BATCH_SIZE = 400
         for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
           const batch = firestore.batch()
@@ -90,25 +90,45 @@ export const onSessionEnd = functions.database
           sessionId,
           chunkCount: chunks.length,
         })
+
+        if (migratedChunkCount > 0) {
+          const summarizeResult = await runSummarizeForSession(showId, sessionId, {
+            triggeredBy: 'system:auto-migration',
+            skipIfInsufficientContent: true,
+            source: 'auto-migration',
+          })
+
+          if (!summarizeResult.ok) {
+            if (summarizeResult.reason === 'insufficient_content') {
+              functions.logger.info('onSessionEnd: auto-summarize skipped — insufficient content', {
+                sessionId,
+                showId,
+              })
+            } else {
+              functions.logger.warn('onSessionEnd: auto-summarize failed', {
+                sessionId,
+                showId,
+                reason: summarizeResult.reason,
+              })
+            }
+          }
+        }
       }
 
-      // ── 4. Update session feedState to 'ended'
       await sessionRef.update({
         feedState: 'ended',
       })
 
-      // ── 5. Clean up RTDB ephemeral node
       await db.ref(`/liveSessions/${sessionId}`).remove()
       functions.logger.info('onSessionEnd: RTDB node cleaned up', { sessionId })
 
-      // ── 6. Write audit log
       await firestore.collection('auditLog').add({
         action: 'SESSION_FEED_STOPPED',
         performedBy: 'system',
         performedAt: admin.firestore.FieldValue.serverTimestamp(),
         showId,
         sessionId,
-        metadata: { chunkCount: rawChunks ? Object.keys(rawChunks).length : 0 },
+        metadata: { chunkCount: migratedChunkCount },
       })
 
       return null

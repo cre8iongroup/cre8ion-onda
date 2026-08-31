@@ -1,15 +1,16 @@
 /**
  * Seed a minimal published show + room + session for Phase 5 attendee testing.
  *
+ * Loads `.env.local` automatically.
+ *
  * Usage:
- *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json \
- *   NEXT_PUBLIC_FIREBASE_PROJECT_ID=cre8ion-onda \
- *   NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://cre8ion-onda-default-rtdb.firebaseio.com \
- *   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=cre8ion-onda.firebasestorage.app \
  *   npx tsx scripts/seed-phase5-attendee-demo.ts
  *
  * Prints the public URLs to hit locally after `npm run dev`.
  */
+
+import { config as loadEnv } from 'dotenv'
+loadEnv({ path: '.env.local' })
 
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { getAdminFirestore } from '../lib/firebase/admin'
